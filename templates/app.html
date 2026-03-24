@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>APAC Budget Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f0eb;--s:#fff;--s2:#f7f5f1;--s3:#edeae3;
+  --b:#dedad2;--bm:#c4c0b6;
+  --t:#18170f;--t2:#5a5749;--t3:#9a9487;
+  --ac:#1c4f3c;--ach:#163d2e;--acb:#eaf2ee;--acbr:#a8cebb;
+  --go:#9a6e0a;--gob:#faf4e0;--gobr:#dfc97a;
+  --in:#1a3fa3;--inb:#edf2ff;--inbr:#93acec;
+  --su:#14703a;--sub:#edfaf3;--subr:#86d4a8;
+  --wa:#92600a;--wab:#fff8eb;--wabr:#f5c842;
+  --da:#b71c1c;--dab:#fef2f2;--dabr:#f5a0a0;
+  --r:6px;--rlg:12px;--rxl:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--t);font-size:13.5px;line-height:1.55;min-height:100vh}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--bm);border-radius:99px}
+input,select,textarea,button{font-family:'Sora',sans-serif}
+.mono{font-family:'DM Mono',monospace}
+
+/* topbar */
+#topbar{background:var(--s);border-bottom:1px solid var(--b);height:50px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
+.brand{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--t3);text-transform:uppercase}
+.brand-dot{width:6px;height:6px;background:var(--ac);border-radius:50%}
+.tb-l,.tb-r{display:flex;align-items:center;gap:8px}
+.nav-btn{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:var(--r);border:none;cursor:pointer;font-size:12px;font-weight:500;background:transparent;color:var(--t2);transition:all .14s}
+.nav-btn:hover{background:var(--s2)}.nav-btn.active{background:var(--acb);color:var(--ac)}
+.chip{display:flex;align-items:center;gap:5px;padding:3px 10px 3px 5px;border-radius:20px;font-size:12px;font-weight:500;background:var(--acb);color:var(--ac)}
+.chip.admin{background:var(--gob);color:var(--go)}
+.av{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;flex-shrink:0}
+.av.adm{background:var(--go)}
+.btn-logout{background:transparent;color:var(--t2);border:1px solid var(--b);padding:5px 10px;border-radius:var(--r);font-size:12px;cursor:pointer}.btn-logout:hover{background:var(--s2)}
+
+/* page */
+#page{padding:18px 20px;max-width:1100px;margin:0 auto}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 15px;border-radius:var(--r);font-family:'Sora',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .14s;white-space:nowrap;line-height:1;text-decoration:none}
+.btn:active{transform:scale(.97)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-p{background:var(--ac);color:#fff;border-color:var(--ac)}.btn-p:hover:not(:disabled){background:var(--ach)}
+.btn-g{background:transparent;color:var(--t2);border-color:var(--b)}.btn-g:hover{background:var(--s2);color:var(--t)}
+.btn-d{background:var(--dab);color:var(--da);border-color:var(--dabr)}.btn-d:hover{background:#fde0e0}
+.btn-e{background:var(--gob);color:var(--go);border-color:var(--gobr)}.btn-e:hover{background:#f5edca}
+.btn-sm{padding:5px 10px;font-size:12px}.btn-xs{padding:4px 8px;font-size:11px}
+
+/* form */
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.07em;text-transform:uppercase}
+.req{color:var(--da);margin-left:2px}
+.field input,.field select,.field textarea{width:100%;padding:8px 11px;font-size:13px;font-family:'Sora',sans-serif;background:var(--s);border:1px solid var(--b);border-radius:var(--r);outline:none;color:var(--t);transition:border-color .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--acb)}
+.field .err-msg{font-size:11px;color:var(--da);display:none}.field.has-err .err-msg{display:block}
+.field.has-err input,.field.has-err select,.field.has-err textarea{border-color:var(--da)}
+.field select{appearance:none;cursor:pointer;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9487' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.field textarea{resize:vertical;min-height:64px}
+.fg{display:grid;gap:12px;margin-bottom:12px}.fg2{grid-template-columns:1fr 1fr}.fg3{grid-template-columns:1fr 1fr 1fr}.fg1{grid-template-columns:1fr}
+.sdiv{display:flex;align-items:center;gap:8px;margin:14px 0 10px}
+.sdiv span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);white-space:nowrap}
+.sdiv::before,.sdiv::after{content:'';flex:1;height:1px;background:var(--b)}
+
+/* card */
+.card{background:var(--s);border:1px solid var(--b);border-radius:var(--rlg)}
+
+/* budget bar */
+.bbar-wrap{height:5px;background:var(--s3);border-radius:99px;overflow:hidden;margin-top:4px}
+.bbar{height:100%;border-radius:99px;transition:width .3s}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace}
+.b-gray{background:var(--s3);color:var(--t2)}.b-green{background:var(--sub);color:var(--su)}
+.b-amber{background:var(--wab);color:var(--wa)}.b-red{background:var(--dab);color:var(--da)}
+.b-teal{background:var(--acb);color:var(--ac)}.b-blue{background:var(--inb);color:var(--in)}
+.b-gold{background:var(--gob);color:var(--go)}
+
+/* modal */
+.overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,9,5,.46);align-items:flex-start;justify-content:center;padding:44px 16px 24px;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:var(--s);border-radius:var(--rxl);border:1px solid var(--b);width:100%;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,.13)}
+.mhead{display:flex;align-items:center;justify-content:space-between;padding:17px 22px 14px;border-bottom:1px solid var(--b)}
+.mhead h2{font-size:15px;font-weight:600}
+.mclose{background:none;border:none;cursor:pointer;color:var(--t3);font-size:17px;padding:3px 5px;border-radius:4px;line-height:1}.mclose:hover{background:var(--s2);color:var(--t)}
+.mbody{padding:18px 22px}.mfoot{padding:14px 22px;border-top:1px solid var(--b);display:flex;justify-content:flex-end;gap:8px}
+.mfoot.spread{justify-content:space-between}
+
+/* toggle */
+.toggle-track{position:relative;width:36px;height:20px;border-radius:10px;background:var(--s3);cursor:pointer;transition:background .2s;flex-shrink:0}
+.toggle-track.on{background:var(--su)}.toggle-track.disabled{cursor:not-allowed;opacity:.45}
+.toggle-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s}
+.toggle-track.on .toggle-knob{left:18px}
+
+/* qtabs */
+.qtabs{display:flex;gap:4px}
+.qtab{padding:5px 12px;border-radius:var(--r);border:1px solid var(--b);background:var(--s);color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;transition:all .14s}
+.qtab:hover{background:var(--s2)}.qtab.active{background:var(--ac);color:#fff;border-color:var(--ac)}
+
+/* stats */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:9px;margin-bottom:14px}
+.stat{background:var(--s);border:1px solid var(--b);border-radius:var(--r);padding:12px 14px}
+.stat-l{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.stat-v{font-family:'DM Mono',monospace;font-size:20px;font-weight:500;line-height:1}
+
+/* channel cards */
+.ch-card{border-radius:var(--rlg);border:1px solid var(--b);background:var(--s);overflow:hidden;margin-bottom:10px}
+.ch-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none;transition:background .14s}
+.ch-head:hover{background:var(--s2)}
+.chev{color:var(--t3);font-size:12px;flex-shrink:0;display:inline-block;transition:transform .2s;width:14px}
+.ch-info{flex:1;min-width:0}
+.ch-name{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+.ch-body{border-top:1px solid var(--b);background:var(--s2)}
+
+/* activity cards (nested inside channel) */
+.act-card{margin:8px 12px;border-radius:var(--r);border:1px solid var(--b);background:var(--s);overflow:hidden}
+.act-head{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;user-select:none;transition:background .14s}
+.act-head:hover{background:var(--s2)}
+.act-name{font-weight:500;font-size:12.5px;display:flex;align-items:center;gap:7px;flex:1}
+.act-body{border-top:1px solid var(--b)}
+
+/* table */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead tr{background:var(--s2)}
+th{padding:7px 11px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--b);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid var(--b);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--s2)}
+tfoot td{background:var(--s2);font-weight:600;font-size:12px}
+
+/* invoice */
+.inv-row{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--s2);border:1px solid var(--b);border-radius:var(--r);font-size:12px;margin-bottom:6px}
+.inv-link{color:var(--in);text-decoration:underline;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inv-rm{background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px;line-height:1;padding:2px}.inv-rm:hover{color:var(--da)}
+.inv-drop{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);border:2px dashed var(--b);font-size:13px;color:var(--t3);cursor:pointer;transition:all .14s}
+.inv-drop:hover{border-color:var(--ac);background:var(--acb);color:var(--ac)}
+
+/* warn banner */
+.warn-banner{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);background:var(--dab);color:var(--da);font-size:12.5px;margin-bottom:12px}
+
+/* spinner */
+.spinner{width:28px;height:28px;border:2.5px solid var(--b);border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite;margin:48px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* toast */
+#toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;transform:translateY(60px);opacity:0;transition:all .22s cubic-bezier(.34,1.2,.64,1);pointer-events:none;max-width:280px}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.ok{background:var(--ac);color:#fff}#toast.err{background:var(--da);color:#fff}#toast.info{background:var(--t);color:#fff}
+
+/* config rows */
+.cfg-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b);border-radius:var(--r);margin-bottom:7px}
+
+@media(max-width:640px){.fg2,.fg3{grid-template-columns:1fr}#page{padding:12px}}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="tb-l">
+    <div class="brand"><span class="brand-dot"></span>APAC Budget Tracker</div>
+    <nav class="tb-l" id="nav"></nav>
+  </div>
+  <div class="tb-r">
+    <div class="chip {{ 'admin' if is_admin }}">
+      <div class="av {{ 'adm' if is_admin }}">{{ user[:2] }}</div>
+      <span>{{ 'APAC Admin' if is_admin else user }}</span>
+    </div>
+    <a href="/logout" class="btn-logout">&#x2190; Sign out</a>
+  </div>
+</div>
+
+<div id="page"></div>
+
+<!-- Entry Modal -->
+<div class="overlay" id="ov-entry">
+  <div class="modal" style="max-width:660px">
+    <div class="mhead"><h2 id="em-ttl">Add Line Item</h2><button class="mclose" onclick="closeEM()">&#x2715;</button></div>
+    <div class="mbody" id="em-body"></div>
+    <div class="mfoot spread" id="em-foot"></div>
+  </div>
+</div>
+
+<!-- Channel Modal -->
+<div class="overlay" id="ov-ch">
+  <div class="modal" style="max-width:380px">
+    <div class="mhead"><h2 id="chm-ttl">Add Channel</h2><button class="mclose" onclick="closeCM()">&#x2715;</button></div>
+    <div class="mbody" id="chm-body"></div>
+    <div class="mfoot"><button class="btn btn-g" onclick="closeCM()">Cancel</button><button class="btn btn-p" onclick="saveChan()">Save Channel</button></div>
+  </div>
+</div>
+
+<!-- Activity Modal -->
+<div class="overlay" id="ov-act">
+  <div class="modal" style="max-width:380px">
+    <div class="mhead"><h2 id="actm-ttl">Add Activity</h2><button class="mclose" onclick="closeAM()">&#x2715;</button></div>
+    <div class="mbody" id="actm-body"></div>
+    <div class="mfoot"><button class="btn btn-g" onclick="closeAM()">Cancel</button><button class="btn btn-p" onclick="saveAct()">Save Activity</button></div>
+  </div>
+</div>
+
+<!-- Delete Confirm -->
+<div class="overlay" id="ov-del">
+  <div class="modal" style="max-width:340px">
+    <div class="mhead"><h2>Delete Entry</h2><button class="mclose" onclick="closeDM()">&#x2715;</button></div>
+    <div class="mbody"><p style="color:var(--t2)">Are you sure? This cannot be undone.</p></div>
+    <div class="mfoot"><button class="btn btn-g" onclick="closeDM()">Cancel</button><button class="btn btn-d" onclick="confirmDel()">Delete</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const USER    = {{ user|tojson }};
+const IS_ADMIN= {{ is_admin|tojson }};
+const MARKETS = {{ markets|tojson }};
+const QS      = ["Q1","Q2","Q3","Q4"];
+const MONTHS  = [
+  {v:"2025-07",l:"Jul 2025",q:"Q1"},{v:"2025-08",l:"Aug 2025",q:"Q1"},{v:"2025-09",l:"Sep 2025",q:"Q1"},
+  {v:"2025-10",l:"Oct 2025",q:"Q2"},{v:"2025-11",l:"Nov 2025",q:"Q2"},{v:"2025-12",l:"Dec 2025",q:"Q2"},
+  {v:"2026-01",l:"Jan 2026",q:"Q3"},{v:"2026-02",l:"Feb 2026",q:"Q3"},{v:"2026-03",l:"Mar 2026",q:"Q3"},
+  {v:"2026-04",l:"Apr 2026",q:"Q4"},{v:"2026-05",l:"May 2026",q:"Q4"},{v:"2026-06",l:"Jun 2026",q:"Q4"},
+];
+const BU_LIST = ["Marketing : Programmatic - 613000009XXX","Marketing : Affiliate - 613000002XXX","Marketing : Paid Social / YouTube - 613000004XXX","Marketing : Local Brand - 613000024XXX","Marketing : Premium - 613000019XXX","Marketing : Partners - 613000022XXX","Marketing : Marketing technology","Marketing - Refer a friend - 613000003XXX","AMF1"];
+const FIN_CATS= ["Affiliate","PPC","PMAX","Programmatic","Bing","Paid Social-Meta","Paid Social-Twitter","Paid Social-Youtube","Paid Social-Douyin","Paid Social-Weibo","Paid Social-Rednote","Paid Social-Wechat","Paid Social-KOC","Baidu-Display","Baidu-PPC","Event","Local Direct Deals","Influencer/KOL","Local SEO","Campaigns/Promotions","Partner","Premium","RAF","AMF1 Race Tickets","AMF1 Activation","Marketing Technology","Education (Internal)"];
+const MKT_CATS= ["Affiliate- CPA & FF","PPC / Search","Programmatic","Paid Social","YouTube","Display","Influencer / KOL","Events & Sponsorship","Premium Partners","SEO","Email / CRM","Brand / OOH","Content","Technology","AMF1","Refer a Friend","Other"];
+
+// ── STATE ──────────────────────────────────────────────────────
+let view='dashboard', country=IS_ADMIN?'TH':USER, quarter='Q1';
+let budgetData={total:0,channels:[],mapping:[]}, entries=[];
+let editEntryId=null, delEntryId=null, editChanId=null, editActId=null, actChanId=null;
+let pendingInvs=[], existInvNames=[], approveState=false;
+
+// ── UTILS ──────────────────────────────────────────────────────
+const fmt  = n => Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0});
+const pct  = (u,t) => t>0 ? Math.min(100,Math.round(u/t*100)) : 0;
+const mLbl = v => (MONTHS.find(m=>m.v===v)||{}).l || v || '—';
+const bClr = (u,t) => u>t&&t>0 ? 'var(--da)' : (u/t)>.85 ? 'var(--wa)' : 'var(--ac)';
+const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const g    = id => document.getElementById(id);
+const gv   = id => g(id)?.value?.trim()||'';
+const sel  = (arr,val) => arr.map(a=>`<option value="${esc(a)}" ${a===val?'selected':''}>${esc(a)}</option>`).join('');
+const SBG  = `background:var(--s);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9487' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center`;
+
+function toast(m,t='info'){const el=g('toast');el.textContent=m;el.className=`show ${t}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2700)}
+async function api(url,opts={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});const d=await r.json();if(!r.ok)throw new Error(d.error||'Failed');return d}
+
+// ── MAPPING AUTO-FILL ──────────────────────────────────────────
+function applyMapping(name){
+  if(!name) return;
+  const lower=name.toLowerCase();
+  let match=null, best=0;
+  for(const r of (budgetData.mapping||[])){
+    const kw=(r.channel_keyword||'').toLowerCase();
+    if(kw && lower.includes(kw) && kw.length>best){match=r;best=kw.length;}
+  }
+  if(!match) return;
+  const bu=g('m-bu'),fc=g('m-fc'),mc=g('m-mc');
+  if(bu&&!bu.value) bu.value=match.bu;
+  if(fc&&!fc.value) fc.value=match.finance_cat;
+  if(mc&&!mc.value) mc.value=match.marketing_cat;
+}
+
+// ── NAV ────────────────────────────────────────────────────────
+function initNav(){
+  g('nav').innerHTML=`
+    <button class="nav-btn active" id="nav-dash" onclick="sv('dashboard')">&#x1F4CA; Dashboard</button>
+    ${IS_ADMIN?`<button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Budget Config</button>`:''}`;
+}
+function sv(v){
+  view=v;
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  g(v==='dashboard'?'nav-dash':'nav-cfg')?.classList.add('active');
+  render();
+}
+function render(){ view==='dashboard' ? renderDash() : renderCfg(); }
+
+// ── DASHBOARD ──────────────────────────────────────────────────
+async function renderDash(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    [budgetData,entries] = await Promise.all([
+      api(`/api/budget/${country}/${quarter}`),
+      api(`/api/entries/${country}/${quarter}`)
+    ]);
+    g('page').innerHTML = buildDash();
+  }catch(e){ g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`; }
+}
+
+function buildDash(){
+  const totAct = entries.reduce((s,e)=>s+(e.actual||0),0);
+  const totPln = entries.reduce((s,e)=>s+(e.planned||0),0);
+  const rem    = (budgetData.total||0) - totAct;
+  const hasCfg = budgetData.total>0 || budgetData.channels.length>0;
+  const p      = pct(totAct, budgetData.total);
+
+  // ── toolbar ──
+  let tb = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
+  if(IS_ADMIN) tb+=`<select onchange="country=this.value;renderDash()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>`;
+  tb+=`<div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderDash()">${q}</button>`).join('')}</div></div>
+    <div style="display:flex;gap:8px">
+      <a href="/api/export" class="btn btn-e btn-sm">&#x2193; CSV</a>
+      <a href="/api/export/xlsx" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
+      <button class="btn btn-p btn-sm" onclick="openEM(null,null,null)">+ Add Entry</button>
+    </div>
+  </div>`;
+
+  // ── country budget summary card ──
+  let bc='';
+  if(hasCfg){
+    bc=`<div class="card" style="padding:16px;margin-bottom:14px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:4px">${country} &#xB7; ${quarter} Total Budget</div>
+          <div class="mono" style="font-size:26px;font-weight:500">$${fmt(budgetData.total)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:right">
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Planned</div><div class="mono" style="color:var(--go);font-size:14px;font-weight:500">$${fmt(totPln)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Actual</div><div class="mono" style="color:var(--su);font-size:14px;font-weight:500">$${fmt(totAct)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Remaining</div><div class="mono" style="color:${totAct>budgetData.total&&budgetData.total>0?'var(--da)':'var(--t2)'};font-size:14px;font-weight:500">$${fmt(Math.max(0,rem))}</div></div>
+        </div>
+      </div>
+      <div class="bbar-wrap"><div class="bbar" style="width:${p}%;background:${bClr(totAct,budgetData.total)}"></div></div>
+      <div style="text-align:right;font-size:11px;color:var(--t3);margin-top:4px">${p}% used</div>
+    </div>`;
+  } else {
+    bc=`<div style="border-radius:var(--rlg);border:1px solid var(--wabr);padding:13px 16px;margin-bottom:14px;background:var(--wab);display:flex;align-items:center;gap:10px">
+      <span>&#x26A0;&#xFE0F;</span>
+      <div>
+        <div style="font-weight:600;color:var(--wa);font-size:13px">No budget configured for ${country} &#xB7; ${quarter}</div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px">${IS_ADMIN?'Go to <strong>Budget Config</strong> to set up.':'Contact your APAC admin — you can still log entries below.'}</div>
+      </div>
+    </div>`;
+  }
+
+  // ── channels + activities + entries ──
+  let chs='';
+
+  if(budgetData.channels.length===0){
+    // No channels — flat table of all entries
+    chs = buildFlatTable(entries);
+  } else {
+    budgetData.channels.forEach(ch=>{
+      const chEntries = entries.filter(e=>e.channel_id===ch.id);
+      const chAct  = chEntries.reduce((s,e)=>s+(e.actual||0),0);
+      const chPln  = chEntries.reduce((s,e)=>s+(e.planned||0),0);
+      const over   = chAct>ch.budget && ch.budget>0;
+      const cp     = pct(chAct, ch.budget);
+
+      // Activities for this channel
+      const acts = ch.activities||[];
+
+      // Entries not under any activity
+      const unactEntries = chEntries.filter(e=>!e.activity_id || !acts.find(a=>a.id===e.activity_id));
+
+      let actHtml='';
+
+      // Each activity as sub-accordion
+      acts.forEach(act=>{
+        const aEntries = chEntries.filter(e=>e.activity_id===act.id);
+        const aAct = aEntries.reduce((s,e)=>s+(e.actual||0),0);
+        const aPln = aEntries.reduce((s,e)=>s+(e.planned||0),0);
+        actHtml+=`<div class="act-card" id="act-${act.id}">
+          <div class="act-head" onclick="toggleAct('${act.id}')">
+            <div class="chev" id="achev-${act.id}">&#x25B6;</div>
+            <div class="act-name">
+              <span>${esc(act.name)}</span>
+              <span class="badge b-gray">${aEntries.length} entr${aEntries.length===1?'y':'ies'}</span>
+              ${aPln>0?`<span class="mono" style="font-size:11px;color:var(--go)">$${fmt(aPln)} planned</span>`:''}
+              ${aAct>0?`<span class="mono" style="font-size:11px;color:var(--su)">$${fmt(aAct)} actual</span>`:''}
+            </div>
+            <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
+              <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}','${act.id}')">+ Add</button>
+              ${IS_ADMIN?`<button class="btn btn-g btn-xs" onclick="openAM('${act.id}','${esc(act.name)}','${ch.id}')">&#x270E;</button>
+              <button class="btn btn-d btn-xs" onclick="deleteAct('${act.id}')">&#x2715;</button>`:''}
+            </div>
+          </div>
+          <div class="act-body" id="actb-${act.id}" style="display:none">
+            ${buildEntryTable(aEntries, false)}
+          </div>
+        </div>`;
+      });
+
+      // Unassigned entries inside channel (no activity)
+      let unassignedHtml='';
+      if(unactEntries.length>0){
+        unassignedHtml=`<div class="act-card" style="border-style:dashed;margin:8px 12px">
+          <div class="act-head" onclick="toggleAct('unact-${ch.id}')">
+            <div class="chev" id="achev-unact-${ch.id}">&#x25B6;</div>
+            <div class="act-name"><span style="color:var(--t3);font-style:italic">Unassigned</span>
+              <span class="badge b-gray">${unactEntries.length}</span>
+            </div>
+          </div>
+          <div class="act-body" id="actb-unact-${ch.id}" style="display:none">
+            ${buildEntryTable(unactEntries, false)}
+          </div>
+        </div>`;
+      }
+
+      chs+=`<div class="ch-card" id="ch-${ch.id}">
+        <div class="ch-head" onclick="toggleCh('${ch.id}')">
+          <div class="chev" id="chev-${ch.id}">&#x25B6;</div>
+          <div class="ch-info">
+            <div class="ch-name">
+              ${esc(ch.name)}
+              ${over?'<span style="color:var(--da);font-size:12px">&#x26A0; Over</span>':''}
+              <span class="badge ${over?'b-red':'b-teal'}">$${fmt(chAct)} / $${fmt(ch.budget)}</span>
+              <span style="font-size:11px;color:var(--t3)">${acts.length} activit${acts.length===1?'y':'ies'} &#xB7; ${chEntries.length} entr${chEntries.length===1?'y':'ies'}</span>
+            </div>
+            <div class="bbar-wrap" style="max-width:400px"><div class="bbar" style="width:${cp}%;background:${bClr(chAct,ch.budget)}"></div></div>
+          </div>
+          <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
+            ${IS_ADMIN?`<button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>`:''}
+            <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}',null)">+ Add</button>
+          </div>
+        </div>
+        <div id="chb-${ch.id}" style="display:none">
+          <div style="padding:8px 0 4px">${actHtml}${unassignedHtml}</div>
+          ${chEntries.length>0?`<div style="padding:6px 12px 10px;border-top:1px solid var(--b)">
+            <div style="font-size:11px;color:var(--t3);display:flex;justify-content:space-between;padding:4px 0">
+              <span>Channel Total</span>
+              <span class="mono" style="color:var(--go)">$${fmt(chPln)} planned &nbsp;·&nbsp; </span>
+              <span class="mono" style="color:var(--su)">$${fmt(chAct)} actual</span>
+            </div>
+          </div>`:''}
+        </div>
+      </div>`;
+    });
+  }
+
+  return tb + bc + chs;
+}
+
+function buildFlatTable(rows){
+  if(!rows.length) return `<div style="text-align:center;padding:40px;color:var(--t3)"><div style="font-weight:500;color:var(--t2);margin-bottom:4px">No entries yet</div><div style="font-size:12px">Click <strong>+ Add Entry</strong> to log your first spend item</div></div>`;
+  return `<div class="card" style="overflow:hidden">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:12px;font-weight:600;color:var(--t2)">All Entries <span style="color:var(--t3);font-weight:400">(${rows.length})</span></div>
+    ${buildEntryTable(rows, true)}
+  </div>`;
+}
+
+function buildEntryTable(rows, showActivity){
+  if(!rows.length) return `<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No entries yet — click <strong>+ Add</strong></div>`;
+  const cols = showActivity ? ['Month','Activity','Finance Cat.','Mkt Cat.','Description','Planned','Actual','Vendor','JIRA','Status','Invoices',''] : ['Month','Finance Cat.','Mkt Cat.','Description','Planned','Actual','Vendor','JIRA','Status','Invoices',''];
+  const span = cols.length;
+  const rowsHtml = rows.map(e=>{
+    const invLinks=(e.invoice_names||[]).map((n,i)=>`<a href="/api/invoice/${e.id}/${i}" style="color:var(--in);text-decoration:underline;font-size:11px;display:block;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(n)}">${esc(n)}</a>`).join('');
+    return `<tr>
+      <td style="color:var(--t2);white-space:nowrap">${mLbl(e.month)}</td>
+      ${showActivity?`<td style="font-size:11.5px;color:var(--in);font-weight:500">${esc(e.activity_name||'—')}</td>`:''}
+      <td style="color:var(--t2)">${esc(e.finance_cat||'—')}</td>
+      <td style="font-size:11.5px;color:var(--t2)">${esc(e.marketing_cat||'—')}</td>
+      <td style="max-width:120px"><span title="${esc(e.description)}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.description||'—')}</span></td>
+      <td class="mono" style="color:var(--go);white-space:nowrap">${e.planned?'$'+fmt(e.planned):'—'}</td>
+      <td class="mono" style="color:var(--su);white-space:nowrap">${e.actual?'$'+fmt(e.actual):'—'}</td>
+      <td style="font-size:11.5px">${esc(e.vendor||'—')}</td>
+      <td><span class="mono" style="font-size:11px;color:var(--in)">${esc(e.jira||'—')}</span></td>
+      <td>${e.approved?'<span class="badge b-green">&#x2713; Approved</span>':'<span class="badge b-amber">&#x23F3; Pending</span>'}</td>
+      <td>${invLinks||'—'}</td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-g btn-xs" onclick="openEM('${e.id}',null,null)">&#x270E;</button>
+        <button class="btn btn-d btn-xs" onclick="openDM('${e.id}')">&#x2715;</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  return `<div class="tbl-wrap"><table>
+    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table></div>`;
+}
+
+function toggleCh(id){
+  const b=g(`chb-${id}`),v=g(`chev-${id}`);
+  const open=b.style.display==='block';
+  b.style.display=open?'none':'block';
+  v.style.transform=open?'':'rotate(90deg)';
+}
+function toggleAct(id){
+  const b=g(`actb-${id}`),v=g(`achev-${id}`);
+  const open=b.style.display==='block';
+  b.style.display=open?'none':'block';
+  v.style.transform=open?'':'rotate(90deg)';
+}
+
+// ── ENTRY MODAL ────────────────────────────────────────────────
+function openEM(entryId, chanId, actId){
+  editEntryId=entryId; pendingInvs=[]; approveState=false;
+  const e = entryId ? entries.find(x=>x.id===entryId) : null;
+  const defCh  = chanId  || e?.channel_id   || '';
+  const defAct = actId   || e?.activity_id  || '';
+  approveState = e?.approved||false;
+  existInvNames = [...(e?.invoice_names||[])];
+
+  g('em-ttl').textContent = e ? 'Edit Line Item' : 'Add Line Item';
+  const hasChannels = budgetData.channels.length>0;
+
+  // Channel selector — always a dropdown
+  const chOptions = budgetData.channels.length > 0
+    ? budgetData.channels.map(c=>`<option value="${c.id}" ${c.id===defCh?'selected':''}>${esc(c.name)}</option>`).join('')
+    : `<option value="" disabled>No channels configured yet</option>`;
+
+  const chField = `<div class="field" id="fg-ch">
+    <label>Channel<span class="req">*</span></label>
+    <select id="m-ch" onchange="onChChange(this)" ${budgetData.channels.length===0?'disabled':''}>
+      <option value="">Select channel...</option>
+      ${chOptions}
+    </select>
+    ${budgetData.channels.length===0
+      ? `<span style="font-size:11px;color:var(--wa)">&#x26A0; ${IS_ADMIN?'<a href="#" onclick="sv(\'config\');closeEM();return false;" style="color:var(--wa)">Add channels in Budget Config</a>':'Ask admin to configure channels'}</span>`
+      : '<span class="err-msg">Required</span>'}
+  </div>`;
+
+  // Activity selector — always a dropdown
+  const chObj = budgetData.channels.find(c=>c.id===defCh);
+  const acts  = chObj?.activities||[];
+  const actOptions = acts.length > 0
+    ? acts.map(a=>`<option value="${a.id}" ${a.id===defAct?'selected':''}>${esc(a.name)}</option>`).join('')
+    : '';
+  const actField = `<div class="field" id="fg-act">
+    <label>Activity <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span></label>
+    <select id="m-act" ${acts.length===0?'disabled':''}>
+      <option value="">${acts.length===0?'— select channel first —':'No activity / general'}</option>
+      ${actOptions}
+    </select>
+  </div>`;
+
+  const canApp = approveState||!!(e?.jira);
+
+  g('em-body').innerHTML=`
+    <div class="sdiv"><span>Details</span></div>
+    <div class="fg fg3">${chField}${actField}
+      <div class="field"><label>Month<span class="req">*</span></label>
+        <select id="m-mo"><option value="">Select...</option>${MONTHS.map(m=>`<option value="${m.v}" ${e?.month===m.v?'selected':''}>${m.l}</option>`).join('')}</select>
+        <span class="err-msg">Required</span></div>
+    </div>
+    <div class="fg fg2">
+      <div class="field"><label>BU / Finance Account<span class="req">*</span></label>
+        <select id="m-bu"><option value="">Select...</option>${BU_LIST.map(b=>`<option value="${b}" ${e?.bu===b?'selected':''}>${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('')}</select>
+        <span class="err-msg">Required</span></div>
+      <div class="field"><label>Finance Category<span class="req">*</span></label>
+        <select id="m-fc"><option value="">Select...</option>${sel(FIN_CATS,e?.finance_cat)}</select>
+        <span class="err-msg">Required</span></div>
+    </div>
+    <div class="fg fg2">
+      <div class="field"><label>Marketing Category<span class="req">*</span></label>
+        <select id="m-mc"><option value="">Select...</option>${sel(MKT_CATS,e?.marketing_cat)}</select>
+        <span class="err-msg">Required</span></div>
+      <div class="field"><label>Description</label>
+        <input type="text" id="m-desc" value="${esc(e?.description||'')}" placeholder="Brief description..."></div>
+    </div>
+    <div class="sdiv"><span>Budget (USD)</span></div>
+    <div class="fg fg3">
+      <div class="field"><label>Planned &amp; Approved<span class="req">*</span></label>
+        <input type="number" id="m-pln" min="0" step="0.01" value="${e?.planned??''}" placeholder="0.00"><span class="err-msg">Required</span></div>
+      <div class="field"><label>Confirmed &amp; Estimated</label>
+        <input type="number" id="m-con" min="0" step="0.01" value="${e?.confirmed??''}" placeholder="0.00"></div>
+      <div class="field"><label>Actual (after billing)<span class="req">*</span></label>
+        <input type="number" id="m-act2" min="0" step="0.01" value="${e?.actual??''}" placeholder="0.00"><span class="err-msg">Required</span></div>
+    </div>
+    <div class="sdiv"><span>Supporting Info</span></div>
+    <div class="fg fg2">
+      <div class="field"><label>JIRA Task</label>
+        <input type="text" id="m-jira" value="${esc(e?.jira||'')}" placeholder="e.g. MKT-1234" oninput="onJiraInput()"></div>
+      <div class="field"><label>Vendor<span class="req">*</span></label>
+        <input type="text" id="m-ven" value="${esc(e?.vendor||'')}" placeholder="e.g. Google, Meta..."><span class="err-msg">Required</span></div>
+    </div>
+    <div class="field" style="margin-bottom:12px"><label>Notes / Comments</label>
+      <textarea id="m-notes" placeholder="Adjustments, context...">${esc(e?.notes||'')}</textarea></div>
+    <div class="sdiv"><span>Invoices</span></div>
+    <div id="inv-list">${existInvNames.map((n,i)=>`<div class="inv-row" id="einv-${i}"><span>&#x1F4CE;</span><a href="/api/invoice/${entryId}/${i}" class="inv-link" download="${esc(n)}">${esc(n)}</a><button class="inv-rm" onclick="rmExInv(${i})">&#x2715;</button></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="inv-drop" style="flex:1"><span>&#x1F4CE;</span><span>Attach invoice (JPG / PDF)</span>
+        <input type="file" accept=".jpg,.jpeg,.pdf" multiple style="display:none" onchange="handleInv(this)"></label>
+      <label class="inv-drop" style="flex:1;border-color:var(--inbr);color:var(--in)"><span>&#x1F4C2;</span><span>Bulk upload (CSV / Excel)</span>
+        <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleBulk(this)"></label>
+    </div>
+    <div id="bulk-preview"></div>`;
+
+  g('em-foot').innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="toggle-track ${approveState?'on':''} ${!canApp?'disabled':''}" id="app-tog" onclick="toggleApp()"><div class="toggle-knob"></div></div>
+      <span id="app-lbl" style="font-size:12px;font-weight:500;color:${approveState?'var(--su)':'var(--t3)'}">${approveState?'Approved':'Pending'}</span>
+      <span id="app-hint" style="font-size:11px;color:var(--t3)">${!canApp?'(requires JIRA)':''}</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-g" onclick="closeEM()">Cancel</button>
+      <button class="btn btn-p" onclick="saveEntry()">${e?'Update':'Save Entry'}</button>
+    </div>`;
+
+  g('m-mo').addEventListener('change',function(){const m=MONTHS.find(x=>x.v===this.value);if(m) g('m-qtr-hidden')&&(g('m-qtr-hidden').value=m.q);});
+
+  // Auto-fill mapping if channel pre-selected
+  if(!e && defCh){ const ch=budgetData.channels.find(c=>c.id===defCh); if(ch) setTimeout(()=>applyMapping(ch.name),50); }
+
+  g('ov-entry').classList.add('open');
+}
+
+function onChChange(sel){
+  const ch = budgetData.channels.find(c=>c.id===sel.value);
+  const actSel = g('m-act');
+  if(actSel){
+    const acts = ch?.activities||[];
+    actSel.innerHTML = `<option value="">${acts.length===0?'No activities yet':'No activity / general'}</option>`
+      + acts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+    actSel.disabled = false;
+  }
+  if(ch) applyMapping(ch.name);
+}
+function onJiraInput(){
+  const has=!!(gv('m-jira'));
+  const t=g('app-tog'),h=g('app-hint');
+  if(!has){t?.classList.add('disabled');if(h)h.textContent='(requires JIRA)';approveState=false;t?.classList.remove('on');const l=g('app-lbl');if(l){l.textContent='Pending';l.style.color='var(--t3)';}}
+  else{t?.classList.remove('disabled');if(h)h.textContent='';}
+}
+function toggleApp(){
+  if(!gv('m-jira')){toast('Add a JIRA link first','err');return;}
+  approveState=!approveState;
+  g('app-tog')?.classList.toggle('on',approveState);
+  const l=g('app-lbl');if(l){l.textContent=approveState?'Approved':'Pending';l.style.color=approveState?'var(--su)':'var(--t3)';}
+}
+function rmExInv(i){existInvNames.splice(i,1);g(`einv-${i}`)?.remove();}
+function handleInv(inp){
+  Array.from(inp.files).forEach(f=>{
+    const r=new FileReader();
+    r.onload=ev=>{
+      const idx=pendingInvs.length;
+      pendingInvs.push({name:f.name,size:f.size,dataUrl:ev.target.result});
+      g('inv-list').insertAdjacentHTML('beforeend',`<div class="inv-row" id="pinv-${idx}"><span>&#x1F4CE;</span><span class="inv-link">${esc(f.name)}</span><span style="font-size:11px;color:var(--t3);flex-shrink:0">${(f.size/1024).toFixed(0)}KB</span><button class="inv-rm" onclick="rmPInv(${idx})">&#x2715;</button></div>`);
+    };r.readAsDataURL(f);
+  });inp.value='';
+}
+function rmPInv(i){pendingInvs.splice(i,1);g(`pinv-${i}`)?.remove();}
+function closeEM(){g('ov-entry').classList.remove('open');}
+
+async function saveEntry(){
+  const hasChannels=budgetData.channels.length>0;
+  const req={mo:'m-mo',bu:'m-bu',fc:'m-fc',mc:'m-mc',pln:'m-pln',act2:'m-act2',ven:'m-ven'};
+  // Only require channel if channels exist and select is not disabled
+  const chEl = g('m-ch');
+  if(chEl && !chEl.disabled && budgetData.channels.length>0) req.ch='m-ch';
+  let ok=true;
+  Object.values(req).forEach(id=>{const el=g(id),p=el?.closest('.field');if(!el?.value?.trim()){p?.classList.add('has-err');ok=false;}else p?.classList.remove('has-err');});
+  if(!ok){toast('Fill in all required fields','err');return;}
+
+  let channelId='',channelName='',activityId='',activityName='';
+  const chElSave = g('m-ch');
+  if(chElSave && !chElSave.disabled && chElSave.value){
+    const ch=budgetData.channels.find(c=>c.id===chElSave.value);
+    channelId=chElSave.value; channelName=ch?.name||'';
+  }
+  const actElSave = g('m-act');
+  if(actElSave && actElSave.value){
+    activityId=actElSave.value;
+    activityName=actElSave.options[actElSave.selectedIndex]?.text||'';
+    if(activityName==='No activity / general'||activityName==='No activities yet') activityName='';
+  }
+
+  const mo=gv('m-mo');
+  const mObj=MONTHS.find(x=>x.v===mo);
+  const payload={
+    country, quarter:mObj?.q||quarter, month:mo,
+    channel_id:channelId, channel_name:channelName,
+    activity_id:activityId, activity_name:activityName,
+    bu:g('m-bu').value, finance_cat:g('m-fc').value, marketing_cat:g('m-mc').value,
+    description:gv('m-desc'),
+    planned:parseFloat(gv('m-pln'))||0,
+    confirmed:parseFloat(gv('m-con'))||0,
+    actual:parseFloat(gv('m-act2'))||0,
+    jira:gv('m-jira'), vendor:gv('m-ven'), notes:g('m-notes')?.value?.trim()||'',
+    approved:approveState,
+    invoice_names:[...existInvNames,...pendingInvs.map(i=>i.name)],
+    invoice_data:[...pendingInvs.map(i=>i.dataUrl)],
+  };
+  try{
+    if(editEntryId) await api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)});
+    else await api('/api/entries',{method:'POST',body:JSON.stringify(payload)});
+    closeEM(); toast(editEntryId?'Entry updated ✓':'Entry added ✓','ok'); renderDash();
+  }catch(e){toast(e.message,'err');}
+}
+
+// ── BULK UPLOAD ────────────────────────────────────────────────
+function handleBulk(inp){
+  const file=inp.files[0]; if(!file){return;} inp.value='';
+  if(file.name.match(/\.csv$/i)){
+    const r=new FileReader(); r.onload=ev=>parseBulk(ev.target.result); r.readAsText(file);
+  } else {
+    toast('Parsing Excel...','info');
+    const fd=new FormData(); fd.append('file',file);
+    fetch('/api/parse_bulk',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+      if(d.error){toast(d.error,'err');}else{showBulkPreview(d.rows);}
+    }).catch(()=>toast('Failed to parse Excel','err'));
+  }
+}
+function parseBulk(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const first=lines[0]?.toLowerCase()||'';
+  const hasHdr=first.includes('month')||first.includes('vendor')||first.includes('planned');
+  const data=hasHdr?lines.slice(1):lines;
+  const parsed=data.map(line=>{
+    const c=line.match(/(".*?"|[^,]+)(?:,|$)/g)?.map(p=>p.replace(/,$/,'').replace(/^"|"$/g,'').trim())||[];
+    if(c.length<2) return null;
+    return{month:c[0]||'',activity:c[1]||'',desc:c[2]||'',vendor:c[3]||'',
+           planned:parseFloat((c[4]||'').replace(/[^0-9.]/g,''))||0,
+           confirmed:parseFloat((c[5]||'').replace(/[^0-9.]/g,''))||0,
+           actual:parseFloat((c[6]||'').replace(/[^0-9.]/g,''))||0,
+           jira:c[7]||'',notes:c[8]||''};
+  }).filter(Boolean);
+  if(!parsed.length){toast('No valid rows found','err');return;}
+  showBulkPreview(parsed);
+}
+function showBulkPreview(rows){
+  g('bulk-preview').innerHTML=`
+    <div style="margin-top:12px;border:1px solid var(--inbr);border-radius:var(--r);overflow:hidden">
+      <div style="padding:9px 14px;background:var(--in);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:600;color:#fff">&#x1F4C2; ${rows.length} rows ready to import</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-xs" style="color:#fff;border:1px solid rgba(255,255,255,.4);background:transparent" onclick="g('bulk-preview').innerHTML=''">Cancel</button>
+          <button class="btn btn-xs" style="background:#fff;color:var(--in);font-weight:600" onclick="confirmBulk()">Save All</button>
+        </div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr style="background:rgba(26,63,163,.08)">
+          <th style="color:var(--in)">Month</th><th style="color:var(--in)">Activity</th><th style="color:var(--in)">Description</th><th style="color:var(--in)">Vendor</th><th style="color:var(--in);text-align:right">Planned</th><th style="color:var(--in);text-align:right">Actual</th>
+        </tr></thead>
+        <tbody>${rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(26,63,163,.03)':''}">
+          <td>${esc(r.month)}</td><td>${esc(r.activity)}</td><td>${esc(r.desc)}</td><td>${esc(r.vendor)}</td>
+          <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.planned)}</td>
+          <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.actual)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <div style="padding:7px 14px;font-size:11px;color:var(--in);background:rgba(26,63,163,.04)">
+        &#x2139; Channel, BU &amp; categories auto-filled from current selection. &nbsp;
+        <a href="/api/bulk_template" style="color:var(--in)">&#x2193; Download template</a>
+      </div>
+    </div>`;
+  window._bulkRows=rows;
+}
+async function confirmBulk(){
+  const rows=window._bulkRows||[]; if(!rows.length) return;
+  const hasChannels=budgetData.channels.length>0;
+  let channelId='',channelName='';
+  if(hasChannels){const ch=budgetData.channels.find(c=>c.id===gv('m-ch'));channelId=gv('m-ch');channelName=ch?.name||'';}
+  else{channelName=g('m-ch')?.value?.trim()||'';}
+  let saved=0,failed=0;
+  for(const r of rows){
+    const mObj=MONTHS.find(x=>x.l.toLowerCase()===r.month.toLowerCase()||x.v===r.month);
+    try{
+      await api('/api/entries',{method:'POST',body:JSON.stringify({
+        country,quarter:mObj?.q||quarter,month:mObj?.v||r.month,
+        channel_id:channelId,channel_name:channelName,
+        activity_id:'',activity_name:r.activity,
+        bu:g('m-bu')?.value||'',finance_cat:g('m-fc')?.value||'',marketing_cat:g('m-mc')?.value||'',
+        description:r.desc,planned:r.planned,confirmed:r.confirmed,actual:r.actual,
+        jira:r.jira,vendor:r.vendor,notes:r.notes,
+        approved:false,invoice_names:[],invoice_data:[],
+      })});saved++;
+    }catch{failed++;}
+  }
+  g('bulk-preview').innerHTML='';window._bulkRows=[];
+  closeEM();toast(`Imported ${saved} entr${saved===1?'y':'ies'}${failed?` (${failed} failed)`:''}  ✓`,'ok');renderDash();
+}
+
+// ── DELETE ─────────────────────────────────────────────────────
+function openDM(id){delEntryId=id;g('ov-del').classList.add('open');}
+function closeDM(){g('ov-del').classList.remove('open');}
+async function confirmDel(){
+  try{await api(`/api/entries/${delEntryId}`,{method:'DELETE'});closeDM();toast('Deleted','info');renderDash();}
+  catch(e){toast(e.message,'err');}
+}
+
+// ── ACTIVITY MODAL ─────────────────────────────────────────────
+function openAM(actId,name,chanId){
+  editActId=actId; actChanId=chanId;
+  g('actm-ttl').textContent=actId?'Edit Activity':'Add Activity';
+  g('actm-body').innerHTML=`<div class="fg fg1">
+    <div class="field"><label>Activity Name<span class="req">*</span></label>
+      <input type="text" id="am-name" value="${esc(name||'')}" placeholder="e.g. CNY Campaign, Q1 Google Push, AMF1 Activation...">
+      <span class="err-msg">Required</span></div>
+  </div>`;
+  g('ov-act').classList.add('open');
+  setTimeout(()=>g('am-name')?.focus(),50);
+}
+function closeAM(){g('ov-act').classList.remove('open');}
+async function saveAct(){
+  const name=gv('am-name');
+  if(!name){g('am-name')?.closest('.field')?.classList.add('has-err');toast('Name required','err');return;}
+  try{
+    if(editActId) await api(`/api/activities/${editActId}`,{method:'PUT',body:JSON.stringify({name})});
+    else await api('/api/activities',{method:'POST',body:JSON.stringify({channel_id:actChanId,country,quarter,name})});
+    closeAM();toast(editActId?'Activity updated ✓':'Activity added ✓','ok');renderDash();
+  }catch(e){toast(e.message,'err');}
+}
+async function deleteAct(id){
+  if(!confirm('Delete this activity? Entries under it will become unassigned.')) return;
+  try{await api(`/api/activities/${id}`,{method:'DELETE'});toast('Activity deleted','info');renderDash();}
+  catch(e){toast(e.message,'err');}
+}
+
+// ── BUDGET CONFIG PAGE ─────────────────────────────────────────
+async function renderCfg(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    budgetData = await api(`/api/budget/${country}/${quarter}`);
+    const mappingRows = await api('/api/mapping').catch(()=>budgetData.mapping||[]);
+    g('page').innerHTML = buildCfg(mappingRows);
+  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
+}
+
+function buildCfg(mappingRows){
+  const totCh=budgetData.channels.reduce((s,c)=>s+(c.budget||0),0);
+  const rem=(budgetData.total||0)-totCh;
+  const over=totCh>(budgetData.total||0)&&budgetData.total>0;
+  const p2=budgetData.total>0?pct(totCh,budgetData.total):0;
+
+  // Selector
+  const selHtml=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <select id="cfg-co" onchange="country=this.value;renderCfg()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>
+      <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderCfg()">${q}</button>`).join('')}</div>
+    </div>
+    <span style="font-size:12px;color:var(--t3)">Configuring <strong style="color:var(--t2)">${country} &#xB7; ${quarter}</strong></span>
+  </div>`;
+
+  // Budget total
+  const bar2=budgetData.total>0?`<div class="bbar-wrap" style="margin:8px 0 4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
+    <div style="font-size:11px;color:var(--t3)">Allocated $${fmt(totCh)} of $${fmt(budgetData.total)} &#xB7; Unallocated $${fmt(Math.max(0,rem))}</div>`:'';
+  const warn=over?`<div class="warn-banner">&#x26A0; Channel budgets exceed country total by $${fmt(Math.abs(rem))}. Adjust before saving.</div>`:'';
+
+  // Channels list with activity sub-rows
+  const chListHtml = budgetData.channels.length===0
+    ? `<div style="text-align:center;padding:28px;border:2px dashed var(--b);border-radius:var(--r);color:var(--t3);font-size:13px">No channels yet — add your first one below</div>`
+    : budgetData.channels.map(ch=>{
+        const acts=ch.activities||[];
+        const actRows=acts.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 32px;border-top:1px dashed var(--b)">
+          <span style="font-size:11px;color:var(--t3)">&#x2514;</span>
+          <span style="font-size:12px;flex:1;color:var(--t2)">${esc(a.name)}</span>
+          <button class="btn btn-g btn-xs" onclick="openAM('${a.id}','${esc(a.name)}','${ch.id}')">&#x270E;</button>
+          <button class="btn btn-d btn-xs" onclick="deleteAct('${a.id}')">&#x2715;</button>
+        </div>`).join('');
+        return `<div class="cfg-row" style="flex-direction:column;align-items:stretch;padding:0">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:500;font-size:13px">${esc(ch.name)}</div>
+              <div class="mono" style="font-size:12px;color:var(--ac)">$${fmt(ch.budget)} &#xB7; <span style="color:var(--t3);font-family:'Sora',sans-serif;font-size:11px">${acts.length} activit${acts.length===1?'y':'ies'}</span></div>
+            </div>
+            <button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>
+            <button class="btn btn-g btn-xs" onclick="openCM('${ch.id}','${esc(ch.name)}',${ch.budget})">Edit</button>
+            <button class="btn btn-d btn-xs" onclick="delChan('${ch.id}')">&#x2715;</button>
+          </div>
+          ${actRows}
+        </div>`;
+      }).join('');
+
+  // Mapping section
+  const buOpts=BU_LIST.map(b=>`<option value="${b}">${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('');
+  const fcOpts=FIN_CATS.map(f=>`<option value="${f}">${esc(f)}</option>`).join('');
+  const mcOpts=MKT_CATS.map(m=>`<option value="${m}">${esc(m)}</option>`).join('');
+  const mapRows=(mappingRows||[]).map((r,i)=>`<tr id="mrow-${i}" style="border-bottom:1px solid var(--b);${i%2===0?'background:var(--s2)':''}">
+    <td style="padding:6px 10px"><input type="text" id="mk-${i}" value="${esc(r.channel_keyword||'')}" placeholder="e.g. performance" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--b);border-radius:4px"></td>
+    <td style="padding:6px 10px"><select id="mbu-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${buOpts}</select></td>
+    <td style="padding:6px 10px"><select id="mfc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${fcOpts}</select></td>
+    <td style="padding:6px 10px"><select id="mmc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${mcOpts}</select></td>
+    <td style="padding:6px 10px;text-align:center"><button onclick="g('mrow-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:13px">&#x2715;</button></td>
+  </tr>`).join('');
+
+  return selHtml + `
+  <!-- COUNTRY BUDGET -->
+  <div class="card" style="padding:18px;margin-bottom:14px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Country Total Budget</div>
+    <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:4px">
+      <div class="field" style="max-width:280px"><label>Total Budget (USD)</label>
+        <input type="number" id="cfg-tot" min="0" step="1000" value="${budgetData.total||''}" placeholder="Enter total budget..."></div>
+      <button class="btn btn-p btn-sm" onclick="saveTot()">Save</button>
+    </div>
+    ${bar2}${warn}
+    <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--b)">
+      <div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px">Or upload budgets for multiple markets at once:</div>
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Upload Budget CSV
+              <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importBudgetFile(this)">
+            </label>
+            <a href="/api/budget_template" class="btn btn-g btn-sm">&#x2193; Download Template</a>
+          </div>
+          <div style="font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
+            <span style="color:var(--t3)">Country, Quarter, Total Budget (USD)</span><br>
+            <span style="color:var(--t2)">TH, Q1, 150000</span><br>
+            <span style="color:var(--t2)">SG, Q1, 80000</span><br>
+            <span style="color:var(--t2)">MY, Q2, 60000</span><br>
+            <span style="color:var(--t3);font-size:10px">&#x2022; Overwrites existing total if already set</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="budget-import-result" style="margin-top:8px"></div>
+  </div>
+
+  <!-- CHANNELS + ACTIVITIES -->
+  <div class="card" style="padding:18px;margin-bottom:14px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:6px">Channels &amp; Activities</div>
+    <div style="font-size:12px;color:var(--t3);margin-bottom:10px">Channels hold the budget. Activities are grouping labels within each channel — no separate budget needed.</div>
+    <div id="ch-cfg" style="margin-bottom:10px">${chListHtml}</div>
+    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-g btn-sm" onclick="openCM(null,'',0)">+ Add Channel</button>
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+          <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Upload Channels (CSV / Excel)
+            <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importChFile(this)">
+          </label>
+          <a href="/api/channel_template" class="btn btn-g btn-sm">&#x2193; Download Template</a>
+        </div>
+        <div style="font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
+          <span style="color:var(--t3)">Country, Quarter, Channel Name, Budget (USD)</span><br>
+          <span style="color:var(--t2)">TH, Q1, Performance Marketing, 50000</span><br>
+          <span style="color:var(--t2)">TH, Q1, Affiliate, 30000</span><br>
+          <span style="color:var(--t2)">SG, Q2, Paid Social, 25000</span><br>
+          <span style="color:var(--t3);font-size:10px">&#x2022; Duplicate channels (same country + quarter + name) are skipped automatically</span><br>
+          <span style="color:var(--t3);font-size:10px">&#x2022; Quarter: Q1 / Q2 / Q3 / Q4 &nbsp;|&nbsp; Country: TH / SG / MY / CN etc.</span>
+        </div>
+      </div>
+    </div>
+    <div id="import-preview" style="margin-top:10px"></div>
+  </div>
+
+  <!-- BU MAPPING -->
+  <div class="card" style="padding:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">BU &amp; Category Auto-fill Mapping</div>
+        <div style="font-size:12px;color:var(--t3);margin-top:3px">When a channel name contains a keyword, BU and categories auto-fill in the entry form.</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-g btn-sm" onclick="addMapRow()">+ Row</button>
+        <button class="btn btn-p btn-sm" onclick="saveMapping()">Save Mapping</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--s2)">
+          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:16%">Keyword</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:32%">BU Account</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:24%">Finance Category</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:22%">Marketing Category</th>
+          <th style="padding:7px 10px;border-bottom:1px solid var(--b);width:36px"></th>
+        </tr></thead>
+        <tbody id="map-tbody">${mapRows}</tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:8px">&#x2139; Longest keyword match wins. Case-insensitive. Only fills empty fields — existing values are not overwritten.</div>
+  </div>`;
+}
+
+// Set select values after render (inline script workaround)
+function initMapSelects(){
+  document.querySelectorAll('[id^="mbu-"],[id^="mfc-"],[id^="mmc-"]').forEach(el=>{
+    // values set via data attribute trick below
+  });
+}
+
+// Channel config actions
+async function saveTot(){
+  const total=parseFloat(g('cfg-tot')?.value)||0;
+  try{await api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})});toast('Budget saved ✓','ok');renderCfg();}
+  catch(e){toast(e.message,'err');}
+}
+
+function openCM(id,name,budget){
+  editChanId=id;
+  g('chm-ttl').textContent=id?'Edit Channel':'Add Channel';
+  g('chm-body').innerHTML=`<div class="fg fg1">
+    <div class="field"><label>Channel Name<span class="req">*</span></label>
+      <input type="text" id="cm-name" value="${esc(name||'')}" placeholder="e.g. Performance, Affiliate, Paid Social..."><span class="err-msg">Required</span></div>
+    <div class="field"><label>Budget (USD)<span class="req">*</span></label>
+      <input type="number" id="cm-bud" min="0" step="1000" value="${budget||''}" placeholder="0"><span class="err-msg">Required</span></div>
+  </div>`;
+  g('ov-ch').classList.add('open');setTimeout(()=>g('cm-name')?.focus(),50);
+}
+function closeCM(){g('ov-ch').classList.remove('open');}
+async function saveChan(){
+  const n=gv('cm-name'),b=gv('cm-bud');let ok=true;
+  if(!n){g('cm-name')?.closest('.field')?.classList.add('has-err');ok=false;}
+  if(!b){g('cm-bud')?.closest('.field')?.classList.add('has-err');ok=false;}
+  if(!ok){toast('Fill in all fields','err');return;}
+  try{
+    if(editChanId) await api(`/api/channels/${editChanId}`,{method:'PUT',body:JSON.stringify({country,quarter,name:n,budget:parseFloat(b)||0})});
+    else await api('/api/channels',{method:'POST',body:JSON.stringify({country,quarter,name:n,budget:parseFloat(b)||0})});
+    closeCM();toast('Channel saved ✓','ok');renderCfg();
+  }catch(e){toast(e.message,'err');}
+}
+async function delChan(id){
+  if(!confirm('Delete this channel? Activities and entries under it will lose their channel link.')) return;
+  try{await api(`/api/channels/${id}`,{method:'DELETE'});toast('Deleted','info');renderCfg();}
+  catch(e){toast(e.message,'err');}
+}
+
+// Channel CSV import — server handles Country+Quarter parsing
+function importChFile(inp){
+  const file=inp.files[0]; if(!file){return;} inp.value='';
+  const fd=new FormData(); fd.append('file',file);
+  const prev=g('import-preview');
+  prev.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3)">&#x23F3; Parsing...</div>`;
+  fetch('/api/import/channels',{method:'POST',body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){toast(d.error,'err');prev.innerHTML='';return;}
+      prev.innerHTML=`<div style="padding:9px 12px;border-radius:var(--r);background:var(--sub);border:1px solid var(--subr);font-size:12px;color:var(--su)">
+        &#x2713; Imported <strong>${d.saved}</strong> channel${d.saved===1?'':'s'}${d.skipped>0?` &nbsp;·&nbsp; <span style="color:var(--t3)">${d.skipped} skipped (duplicates or missing data)</span>`:''}.
+      </div>`;
+      setTimeout(()=>renderCfg(), 1200);
+    })
+    .catch(()=>{toast('Upload failed','err');prev.innerHTML='';});
+}
+
+// Country budget CSV import
+function importBudgetFile(inp){
+  const file=inp.files[0]; if(!file){return;} inp.value='';
+  const fd=new FormData(); fd.append('file',file);
+  const res=g('budget-import-result');
+  res.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3)">&#x23F3; Parsing...</div>`;
+  fetch('/api/import/budgets',{method:'POST',body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){toast(d.error,'err');res.innerHTML='';return;}
+      res.innerHTML=`<div style="padding:9px 12px;border-radius:var(--r);background:var(--sub);border:1px solid var(--subr);font-size:12px;color:var(--su)">
+        &#x2713; Updated <strong>${d.saved}</strong> budget record${d.saved===1?'':'s'}${d.skipped>0?` &nbsp;·&nbsp; <span style="color:var(--t3)">${d.skipped} skipped (empty or invalid rows)</span>`:''}.
+      </div>`;
+      setTimeout(()=>renderCfg(), 1200);
+    })
+    .catch(()=>{toast('Upload failed','err');res.innerHTML='';});
+}
+
+// Mapping
+function addMapRow(){
+  const tbody=g('map-tbody');if(!tbody)return;
+  const i=tbody.querySelectorAll('tr').length;
+  const buOpts=BU_LIST.map(b=>`<option value="${b}">${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('');
+  const fcOpts=FIN_CATS.map(f=>`<option value="${f}">${esc(f)}</option>`).join('');
+  const mcOpts=MKT_CATS.map(m=>`<option value="${m}">${esc(m)}</option>`).join('');
+  const tr=document.createElement('tr');tr.id=`mrow-${i}`;tr.style.borderBottom='1px solid var(--b)';
+  tr.innerHTML=`
+    <td style="padding:6px 10px"><input type="text" id="mk-${i}" placeholder="keyword" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--b);border-radius:4px"></td>
+    <td style="padding:6px 10px"><select id="mbu-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${buOpts}</select></td>
+    <td style="padding:6px 10px"><select id="mfc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${fcOpts}</select></td>
+    <td style="padding:6px 10px"><select id="mmc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${mcOpts}</select></td>
+    <td style="padding:6px 10px;text-align:center"><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:13px">&#x2715;</button></td>`;
+  tbody.appendChild(tr);
+}
+async function saveMapping(){
+  const rows=Array.from(g('map-tbody')?.querySelectorAll('tr')||[]).map(tr=>{
+    const i=tr.id.replace('mrow-','');
+    return{channel_keyword:g(`mk-${i}`)?.value?.trim().toLowerCase()||'',bu:g(`mbu-${i}`)?.value||'',finance_cat:g(`mfc-${i}`)?.value||'',marketing_cat:g(`mmc-${i}`)?.value||''};
+  }).filter(r=>r.channel_keyword);
+  try{await api('/api/mapping',{method:'POST',body:JSON.stringify(rows)});toast(`Mapping saved — ${rows.length} rules ✓`,'ok');}
+  catch(e){toast(e.message,'err');}
+}
+
+// Set mapping select values after DOM render
+function setMapSelects(rows){
+  rows.forEach((r,i)=>{
+    const bu=g(`mbu-${i}`),fc=g(`mfc-${i}`),mc=g(`mmc-${i}`);
+    if(bu)bu.value=r.bu||'';if(fc)fc.value=r.finance_cat||'';if(mc)mc.value=r.marketing_cat||'';
+  });
+}
+
+// Override renderCfg to set selects after build
+const _origRenderCfg=renderCfg;
+async function renderCfg(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    budgetData=await api(`/api/budget/${country}/${quarter}`);
+    let mappingRows=[];
+    try{mappingRows=await api('/api/mapping');}catch{mappingRows=budgetData.mapping||[];}
+    g('page').innerHTML=buildCfg(mappingRows);
+    setMapSelects(mappingRows);
+  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
+}
+
+// ── KEYBOARD ───────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeEM();closeCM();closeAM();closeDM();}
+});
+
+// ── BOOT ───────────────────────────────────────────────────────
+initNav();
+renderDash();
+</script>
+</body>
+</html>
