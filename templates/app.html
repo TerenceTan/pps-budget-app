@@ -78,9 +78,10 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .b-gold{background:var(--gob);color:var(--go)}
 
 /* modal */
-.overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,9,5,.46);align-items:flex-start;justify-content:center;padding:44px 16px 24px;overflow-y:auto}
-.overlay.open{display:flex}
-.modal{background:var(--s);border-radius:var(--rxl);border:1px solid var(--b);width:100%;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,.13)}
+.overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,9,5,.46);align-items:flex-start;justify-content:center;padding:44px 16px 24px;overflow-y:auto;opacity:0;transition:opacity .18s}
+.overlay.open{display:flex;opacity:1}
+.modal{background:var(--s);border-radius:var(--rxl);border:1px solid var(--b);width:100%;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,.13);transform:translateY(12px);transition:transform .2s ease-out}
+.overlay.open .modal{transform:translateY(0)}
 .mhead{display:flex;align-items:center;justify-content:space-between;padding:17px 22px 14px;border-bottom:1px solid var(--b)}
 .mhead h2{font-size:15px;font-weight:600}
 .mclose{background:none;border:none;cursor:pointer;color:var(--t3);font-size:17px;padding:3px 5px;border-radius:4px;line-height:1}.mclose:hover{background:var(--s2);color:var(--t)}
@@ -145,7 +146,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* toast */
-#toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;transform:translateY(60px);opacity:0;transition:all .22s cubic-bezier(.34,1.2,.64,1);pointer-events:none;max-width:280px}
+#toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;transform:translateY(60px);opacity:0;transition:all .22s cubic-bezier(.34,1.2,.64,1);pointer-events:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 #toast.show{transform:translateY(0);opacity:1}
 #toast.ok{background:var(--ac);color:#fff}#toast.err{background:var(--da);color:#fff}#toast.info{background:var(--t);color:#fff}
 
@@ -174,7 +175,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 <div id="page"></div>
 
 <!-- Entry Modal -->
-<div class="overlay" id="ov-entry">
+<div class="overlay" id="ov-entry" onclick="if(event.target===this)closeEM()">
   <div class="modal" style="max-width:660px">
     <div class="mhead"><h2 id="em-ttl">Add Line Item</h2><button class="mclose" onclick="closeEM()">&#x2715;</button></div>
     <div class="mbody" id="em-body"></div>
@@ -183,7 +184,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 </div>
 
 <!-- Channel Modal -->
-<div class="overlay" id="ov-ch">
+<div class="overlay" id="ov-ch" onclick="if(event.target===this)closeCM()">
   <div class="modal" style="max-width:380px">
     <div class="mhead"><h2 id="chm-ttl">Add Channel</h2><button class="mclose" onclick="closeCM()">&#x2715;</button></div>
     <div class="mbody" id="chm-body"></div>
@@ -192,7 +193,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 </div>
 
 <!-- Activity Modal -->
-<div class="overlay" id="ov-act">
+<div class="overlay" id="ov-act" onclick="if(event.target===this)closeAM()">
   <div class="modal" style="max-width:380px">
     <div class="mhead"><h2 id="actm-ttl">Add Activity</h2><button class="mclose" onclick="closeAM()">&#x2715;</button></div>
     <div class="mbody" id="actm-body"></div>
@@ -201,7 +202,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 </div>
 
 <!-- Delete Confirm -->
-<div class="overlay" id="ov-del">
+<div class="overlay" id="ov-del" onclick="if(event.target===this)closeDM()">
   <div class="modal" style="max-width:340px">
     <div class="mhead"><h2>Delete Entry</h2><button class="mclose" onclick="closeDM()">&#x2715;</button></div>
     <div class="mbody"><p style="color:var(--t2)">Are you sure? This cannot be undone.</p></div>
@@ -244,7 +245,25 @@ const sel  = (arr,val) => arr.map(a=>`<option value="${esc(a)}" ${a===val?'selec
 const SBG  = `background:var(--s);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9487' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center`;
 
 function toast(m,t='info'){const el=g('toast');el.textContent=m;el.className=`show ${t}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2700)}
-async function api(url,opts={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});const d=await r.json();if(!r.ok)throw new Error(d.error||'Failed');return d}
+
+async function api(url,opts={}){
+  const headers = opts.headers || {};
+  // Only set JSON content-type when sending a body
+  if(opts.body && !headers['Content-Type']){
+    headers['Content-Type'] = 'application/json';
+  }
+  const r = await fetch(url, {...opts, headers});
+  const ct = r.headers.get('content-type')||'';
+  if(!ct.includes('application/json')){
+    // Flask returned HTML (error page) — extract useful info
+    const text = await r.text();
+    const match = text.match(/<title>(.*?)<\/title>/i) || text.match(/Error.*?:\s*(.+?)[\n<]/);
+    throw new Error(`Server error ${r.status}: ${match?match[1]:'check Flask terminal for details'}`);
+  }
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error||`Error ${r.status}`);
+  return d;
+}
 
 // ── MAPPING AUTO-FILL ──────────────────────────────────────────
 function applyMapping(name){
@@ -276,16 +295,62 @@ function sv(v){
 }
 function render(){ view==='dashboard' ? renderDash() : renderCfg(); }
 
+// ── DATA CACHE ─────────────────────────────────────────────────
+// Load once, update locally — no full reload after every action
+let _cache = { budget: null, entries: null, cacheKey: null };
+
+function cacheKey(){ return `${country}|${quarter}`; }
+
+async function loadData(force=false){
+  const key = cacheKey();
+  if(!force && _cache.cacheKey===key && _cache.budget && _cache.entries!==null){
+    budgetData = _cache.budget;
+    entries    = _cache.entries;
+    return;
+  }
+  const [b,e] = await Promise.all([
+    api(`/api/budget/${country}/${quarter}`),
+    api(`/api/entries/${country}/${quarter}`)
+  ]);
+  budgetData = b; entries = e;
+  _cache = { budget:b, entries:e, cacheKey:key };
+}
+
+function invalidateCache(){ _cache.cacheKey = null; }
+
+// Re-render from current state without hitting the server
+function rerender(){
+  const page = g('page');
+  if(!page) return;
+  // Preserve open accordion state
+  const openCh  = [...document.querySelectorAll('[id^="chb-"]')].filter(el=>el.style.display==='block').map(el=>el.id.replace('chb-',''));
+  const openAct = [...document.querySelectorAll('[id^="actb-"]')].filter(el=>el.style.display==='block').map(el=>el.id.replace('actb-',''));
+  page.innerHTML = buildDash();
+  // Restore open state
+  openCh.forEach(id=>{ const b=g(`chb-${id}`),v=g(`chev-${id}`); if(b){b.style.display='block';if(v)v.style.transform='rotate(90deg)';} });
+  openAct.forEach(id=>{ const b=g(`actb-${id}`),v=g(`achev-${id}`); if(b){b.style.display='block';if(v)v.style.transform='rotate(90deg)';} });
+}
+
 // ── DASHBOARD ──────────────────────────────────────────────────
 async function renderDash(){
-  g('page').innerHTML='<div class="spinner"></div>';
+  // Show spinner only on first load or country/quarter change
+  const key = cacheKey();
+  if(_cache.cacheKey !== key){
+    g('page').innerHTML='<div class="spinner"></div>';
+  }
   try{
-    [budgetData,entries] = await Promise.all([
-      api(`/api/budget/${country}/${quarter}`),
-      api(`/api/entries/${country}/${quarter}`)
-    ]);
+    await loadData();
     g('page').innerHTML = buildDash();
-  }catch(e){ g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`; }
+  }catch(e){
+    g('page').innerHTML=`<div style="padding:24px;max-width:600px">
+      <div style="background:var(--dab);border:1px solid var(--dabr);border-radius:var(--r);padding:16px">
+        <div style="font-weight:600;color:var(--da);margin-bottom:6px">&#x26A0; Failed to load dashboard</div>
+        <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">${esc(e.message)}</div>
+        <div style="font-size:11.5px;color:var(--t3)">Check your Flask terminal for the full error. Common causes: Google Sheets credentials, missing tabs, or a Python error in app.py.</div>
+      </div>
+      <button class="btn btn-g btn-sm" style="margin-top:12px" onclick="invalidateCache();renderDash()">&#x21BA; Retry</button>
+    </div>`;
+  }
 }
 
 function buildDash(){
@@ -556,8 +621,8 @@ function openEM(entryId, chanId, actId){
         <input type="number" id="m-pln" min="0" step="0.01" value="${e?.planned??''}" placeholder="0.00"><span class="err-msg">Required</span></div>
       <div class="field"><label>Confirmed &amp; Estimated</label>
         <input type="number" id="m-con" min="0" step="0.01" value="${e?.confirmed??''}" placeholder="0.00"></div>
-      <div class="field"><label>Actual (after billing)<span class="req">*</span></label>
-        <input type="number" id="m-act2" min="0" step="0.01" value="${e?.actual??''}" placeholder="0.00"><span class="err-msg">Required</span></div>
+      <div class="field"><label>Actual (after billing)</label>
+        <input type="number" id="m-act2" min="0" step="0.01" value="${e?.actual??''}" placeholder="0.00"></div>
     </div>
     <div class="sdiv"><span>Supporting Info</span></div>
     <div class="fg fg2">
@@ -636,7 +701,7 @@ function closeEM(){g('ov-entry').classList.remove('open');}
 
 async function saveEntry(){
   const hasChannels=budgetData.channels.length>0;
-  const req={mo:'m-mo',bu:'m-bu',fc:'m-fc',mc:'m-mc',pln:'m-pln',act2:'m-act2',ven:'m-ven'};
+  const req={mo:'m-mo',bu:'m-bu',fc:'m-fc',mc:'m-mc',pln:'m-pln',ven:'m-ven'};
   // Only require channel if channels exist and select is not disabled
   const chEl = g('m-ch');
   if(chEl && !chEl.disabled && budgetData.channels.length>0) req.ch='m-ch';
@@ -674,9 +739,25 @@ async function saveEntry(){
     invoice_data:[...pendingInvs.map(i=>i.dataUrl)],
   };
   try{
-    if(editEntryId) await api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)});
-    else await api('/api/entries',{method:'POST',body:JSON.stringify(payload)});
-    closeEM(); toast(editEntryId?'Entry updated ✓':'Entry added ✓','ok'); renderDash();
+    if(editEntryId){
+      // Optimistic update local state immediately
+      const idx = entries.findIndex(e=>e.id===editEntryId);
+      if(idx>=0) entries[idx] = {...entries[idx], ...payload, approved:approveState, invoice_names:payload.invoice_names};
+      _cache.entries = entries;
+      rerender();
+      closeEM(); toast('Entry updated ✓','ok');
+      api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)}).catch(()=>toast('Sync error — refresh to verify','err'));
+    } else {
+      // Optimistic add
+      const tmpId = 'tmp_'+Date.now();
+      entries.push({...payload, id:tmpId, entered_by:USER, updated_at:new Date().toISOString(), invoice_names:payload.invoice_names});
+      _cache.entries = entries;
+      rerender();
+      closeEM(); toast('Entry added ✓','ok');
+      api('/api/entries',{method:'POST',body:JSON.stringify(payload)})
+        .then(d=>{ const i=entries.findIndex(e=>e.id===tmpId); if(i>=0) entries[i].id=d.id; })
+        .catch(()=>{ entries=entries.filter(e=>e.id!==tmpId); rerender(); toast('Save failed — please retry','err'); });
+    }
   }catch(e){toast(e.message,'err');}
 }
 
@@ -743,31 +824,34 @@ async function confirmBulk(){
   let channelId='',channelName='';
   if(hasChannels){const ch=budgetData.channels.find(c=>c.id===gv('m-ch'));channelId=gv('m-ch');channelName=ch?.name||'';}
   else{channelName=g('m-ch')?.value?.trim()||'';}
-  let saved=0,failed=0;
-  for(const r of rows){
-    const mObj=MONTHS.find(x=>x.l.toLowerCase()===r.month.toLowerCase()||x.v===r.month);
-    try{
-      await api('/api/entries',{method:'POST',body:JSON.stringify({
-        country,quarter:mObj?.q||quarter,month:mObj?.v||r.month,
-        channel_id:channelId,channel_name:channelName,
-        activity_id:'',activity_name:r.activity,
-        bu:g('m-bu')?.value||'',finance_cat:g('m-fc')?.value||'',marketing_cat:g('m-mc')?.value||'',
-        description:r.desc,planned:r.planned,confirmed:r.confirmed,actual:r.actual,
-        jira:r.jira,vendor:r.vendor,notes:r.notes,
-        approved:false,invoice_names:[],invoice_data:[],
-      })});saved++;
-    }catch{failed++;}
-  }
   g('bulk-preview').innerHTML='';window._bulkRows=[];
-  closeEM();toast(`Imported ${saved} entr${saved===1?'y':'ies'}${failed?` (${failed} failed)`:''}  ✓`,'ok');renderDash();
+  closeEM(); toast(`Saving ${rows.length} entries...`,'info');
+  // Save all, then reload fresh data once
+  Promise.all(rows.map(r => {
+    const mObj=MONTHS.find(x=>x.l.toLowerCase()===r.month.toLowerCase()||x.v===r.month);
+    return api('/api/entries',{method:'POST',body:JSON.stringify({
+      country,quarter:mObj?.q||quarter,month:mObj?.v||r.month,
+      channel_id:channelId,channel_name:channelName,
+      activity_id:'',activity_name:r.activity,
+      bu:g('m-bu')?.value||'',finance_cat:g('m-fc')?.value||'',marketing_cat:g('m-mc')?.value||'',
+      description:r.desc,planned:r.planned,confirmed:r.confirmed,actual:r.actual,
+      jira:r.jira,vendor:r.vendor,notes:r.notes,
+      approved:false,invoice_names:[],invoice_data:[],
+    })});
+  })).then(()=>{ invalidateCache(); renderDash(); toast(`Imported ${rows.length} entries ✓`,'ok'); })
+     .catch(()=>{ invalidateCache(); renderDash(); toast('Some entries may not have saved — please check','err'); });
 }
 
 // ── DELETE ─────────────────────────────────────────────────────
 function openDM(id){delEntryId=id;g('ov-del').classList.add('open');}
 function closeDM(){g('ov-del').classList.remove('open');}
 async function confirmDel(){
-  try{await api(`/api/entries/${delEntryId}`,{method:'DELETE'});closeDM();toast('Deleted','info');renderDash();}
-  catch(e){toast(e.message,'err');}
+  // Optimistic delete
+  entries = entries.filter(e=>e.id!==delEntryId);
+  _cache.entries = entries;
+  rerender();
+  closeDM(); toast('Deleted','info');
+  api(`/api/entries/${delEntryId}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderDash(); toast('Delete failed — refreshing','err'); });
 }
 
 // ── ACTIVITY MODAL ─────────────────────────────────────────────
@@ -786,16 +870,43 @@ function closeAM(){g('ov-act').classList.remove('open');}
 async function saveAct(){
   const name=gv('am-name');
   if(!name){g('am-name')?.closest('.field')?.classList.add('has-err');toast('Name required','err');return;}
+  closeAM();
   try{
-    if(editActId) await api(`/api/activities/${editActId}`,{method:'PUT',body:JSON.stringify({name})});
-    else await api('/api/activities',{method:'POST',body:JSON.stringify({channel_id:actChanId,country,quarter,name})});
-    closeAM();toast(editActId?'Activity updated ✓':'Activity added ✓','ok');renderDash();
+    if(editActId){
+      // Update local state
+      budgetData.channels.forEach(ch=>{
+        const a=ch.activities?.find(a=>a.id===editActId);
+        if(a) a.name=name;
+      });
+      _cache.budget=budgetData;
+      rerender();
+      toast('Activity updated ✓','ok');
+      api(`/api/activities/${editActId}`,{method:'PUT',body:JSON.stringify({name})}).catch(()=>toast('Sync error','err'));
+    } else {
+      // Add to local state immediately
+      const tmpId='act_tmp_'+Date.now();
+      const ch=budgetData.channels.find(c=>c.id===actChanId);
+      if(ch){ ch.activities=ch.activities||[]; ch.activities.push({id:tmpId,name,sort_order:ch.activities.length}); }
+      _cache.budget=budgetData;
+      rerender();
+      toast('Activity added ✓','ok');
+      api('/api/activities',{method:'POST',body:JSON.stringify({channel_id:actChanId,country,quarter,name})})
+        .then(d=>{ const ch=budgetData.channels.find(c=>c.id===actChanId); if(ch){const a=ch.activities?.find(a=>a.id===tmpId);if(a)a.id=d.id;} })
+        .catch(()=>{ invalidateCache(); renderDash(); toast('Save failed','err'); });
+    }
   }catch(e){toast(e.message,'err');}
 }
+
 async function deleteAct(id){
   if(!confirm('Delete this activity? Entries under it will become unassigned.')) return;
-  try{await api(`/api/activities/${id}`,{method:'DELETE'});toast('Activity deleted','info');renderDash();}
-  catch(e){toast(e.message,'err');}
+  // Remove from local state
+  budgetData.channels.forEach(ch=>{
+    ch.activities=(ch.activities||[]).filter(a=>a.id!==id);
+  });
+  _cache.budget=budgetData;
+  rerender();
+  toast('Activity deleted','info');
+  api(`/api/activities/${id}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderDash(); toast('Delete failed','err'); });
 }
 
 // ── BUDGET CONFIG PAGE ─────────────────────────────────────────
@@ -803,8 +914,12 @@ async function renderCfg(){
   g('page').innerHTML='<div class="spinner"></div>';
   try{
     budgetData = await api(`/api/budget/${country}/${quarter}`);
-    const mappingRows = await api('/api/mapping').catch(()=>budgetData.mapping||[]);
+    _cache.budget = budgetData;
+    _cache.cacheKey = cacheKey();
+    let mappingRows=[];
+    try{mappingRows=await api('/api/mapping');}catch(e){mappingRows=budgetData.mapping||[];}
     g('page').innerHTML = buildCfg(mappingRows);
+    setMapSelects(mappingRows);
   }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
 }
 
@@ -963,8 +1078,11 @@ function initMapSelects(){
 // Channel config actions
 async function saveTot(){
   const total=parseFloat(g('cfg-tot')?.value)||0;
-  try{await api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})});toast('Budget saved ✓','ok');renderCfg();}
-  catch(e){toast(e.message,'err');}
+  budgetData.total=total;
+  _cache.budget=budgetData;
+  toast('Budget saved ✓','ok');
+  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).catch(()=>toast('Sync error','err'));
+  renderCfg();
 }
 
 function openCM(id,name,budget){
@@ -979,57 +1097,170 @@ function openCM(id,name,budget){
   g('ov-ch').classList.add('open');setTimeout(()=>g('cm-name')?.focus(),50);
 }
 function closeCM(){g('ov-ch').classList.remove('open');}
+
 async function saveChan(){
   const n=gv('cm-name'),b=gv('cm-bud');let ok=true;
   if(!n){g('cm-name')?.closest('.field')?.classList.add('has-err');ok=false;}
   if(!b){g('cm-bud')?.closest('.field')?.classList.add('has-err');ok=false;}
   if(!ok){toast('Fill in all fields','err');return;}
-  try{
-    if(editChanId) await api(`/api/channels/${editChanId}`,{method:'PUT',body:JSON.stringify({country,quarter,name:n,budget:parseFloat(b)||0})});
-    else await api('/api/channels',{method:'POST',body:JSON.stringify({country,quarter,name:n,budget:parseFloat(b)||0})});
-    closeCM();toast('Channel saved ✓','ok');renderCfg();
-  }catch(e){toast(e.message,'err');}
-}
-async function delChan(id){
-  if(!confirm('Delete this channel? Activities and entries under it will lose their channel link.')) return;
-  try{await api(`/api/channels/${id}`,{method:'DELETE'});toast('Deleted','info');renderCfg();}
-  catch(e){toast(e.message,'err');}
+  const budget=parseFloat(b)||0;
+  closeCM();
+  if(editChanId){
+    const ch=budgetData.channels.find(c=>c.id===editChanId);
+    if(ch){ch.name=n;ch.budget=budget;}
+    _cache.budget=budgetData;
+    toast('Channel saved ✓','ok');
+    renderCfg();
+    api(`/api/channels/${editChanId}`,{method:'PUT',body:JSON.stringify({country,quarter,name:n,budget})}).catch(()=>toast('Sync error','err'));
+  } else {
+    const tmpId='ch_tmp_'+Date.now();
+    budgetData.channels.push({id:tmpId,name:n,budget,sort_order:budgetData.channels.length,activities:[]});
+    _cache.budget=budgetData;
+    toast('Channel saved ✓','ok');
+    renderCfg();
+    api('/api/channels',{method:'POST',body:JSON.stringify({country,quarter,name:n,budget})})
+      .then(d=>{ const ch=budgetData.channels.find(c=>c.id===tmpId);if(ch)ch.id=d.id; })
+      .catch(()=>{ invalidateCache(); renderCfg(); toast('Save failed','err'); });
+  }
 }
 
-// Channel CSV import — server handles Country+Quarter parsing
+async function delChan(id){
+  if(!confirm('Delete this channel? Activities and entries under it will lose their channel link.')) return;
+  budgetData.channels=budgetData.channels.filter(c=>c.id!==id);
+  _cache.budget=budgetData;
+  renderCfg();
+  toast('Deleted','info');
+  api(`/api/channels/${id}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderCfg(); toast('Delete failed','err'); });
+}
+
+// Channel CSV/Excel import — server handles parsing + saving
 function importChFile(inp){
   const file=inp.files[0]; if(!file){return;} inp.value='';
   const fd=new FormData(); fd.append('file',file);
   const prev=g('import-preview');
-  prev.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3)">&#x23F3; Parsing...</div>`;
+  prev.innerHTML=`<div style="padding:10px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
+    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing channels...</div>`;
   fetch('/api/import/channels',{method:'POST',body:fd})
     .then(r=>r.json())
     .then(d=>{
-      if(d.error){toast(d.error,'err');prev.innerHTML='';return;}
-      prev.innerHTML=`<div style="padding:9px 12px;border-radius:var(--r);background:var(--sub);border:1px solid var(--subr);font-size:12px;color:var(--su)">
-        &#x2713; Imported <strong>${d.saved}</strong> channel${d.saved===1?'':'s'}${d.skipped>0?` &nbsp;·&nbsp; <span style="color:var(--t3)">${d.skipped} skipped (duplicates or missing data)</span>`:''}.
-      </div>`;
-      setTimeout(()=>renderCfg(), 1200);
+      if(d.error){toast(d.error,'err');prev.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${d.error}</div>`;return;}
+
+      // Build results table
+      let html=`<div style="border:1px solid var(--subr);border-radius:var(--r);overflow:hidden;margin-top:8px">
+        <div style="padding:9px 14px;background:var(--sub);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600;color:var(--su)">&#x2713; Imported ${d.saved} channel${d.saved===1?'':'s'}${d.skipped>0?` · <span style="color:var(--t3);font-weight:400">${d.skipped} skipped</span>`:''}</span>
+          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
+        </div>`;
+      if(d.rows && d.rows.length>0){
+        html+=`<div class="tbl-wrap"><table>
+          <thead><tr style="background:rgba(20,112,58,.06)"><th style="color:var(--su)">Country</th><th style="color:var(--su)">Quarter</th><th style="color:var(--su)">Channel</th><th style="color:var(--su);text-align:right">Budget</th></tr></thead>
+          <tbody>${d.rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(20,112,58,.03)':''}">
+            <td>${esc(r.country)}</td><td>${esc(r.quarter)}</td><td style="font-weight:500">${esc(r.name)}</td>
+            <td class="mono" style="text-align:right;color:var(--ac)">$${fmt(r.budget)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`;
+      }
+      html+=`</div>`;
+      prev.innerHTML=html;
+
+      // Refresh channel list in-place without full page rebuild
+      invalidateCache();
+      refreshCfgChannels();
     })
-    .catch(()=>{toast('Upload failed','err');prev.innerHTML='';});
+    .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');prev.innerHTML='';});
 }
 
-// Country budget CSV import
+// Country budget CSV/Excel import
 function importBudgetFile(inp){
   const file=inp.files[0]; if(!file){return;} inp.value='';
   const fd=new FormData(); fd.append('file',file);
   const res=g('budget-import-result');
-  res.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3)">&#x23F3; Parsing...</div>`;
+  res.innerHTML=`<div style="padding:10px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
+    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing budgets...</div>`;
   fetch('/api/import/budgets',{method:'POST',body:fd})
     .then(r=>r.json())
     .then(d=>{
-      if(d.error){toast(d.error,'err');res.innerHTML='';return;}
-      res.innerHTML=`<div style="padding:9px 12px;border-radius:var(--r);background:var(--sub);border:1px solid var(--subr);font-size:12px;color:var(--su)">
-        &#x2713; Updated <strong>${d.saved}</strong> budget record${d.saved===1?'':'s'}${d.skipped>0?` &nbsp;·&nbsp; <span style="color:var(--t3)">${d.skipped} skipped (empty or invalid rows)</span>`:''}.
-      </div>`;
-      setTimeout(()=>renderCfg(), 1200);
+      if(d.error){toast(d.error,'err');res.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${d.error}</div>`;return;}
+
+      let html=`<div style="border:1px solid var(--subr);border-radius:var(--r);overflow:hidden;margin-top:8px">
+        <div style="padding:9px 14px;background:var(--sub);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600;color:var(--su)">&#x2713; Updated ${d.saved} budget${d.saved===1?'':'s'}${d.skipped>0?` · <span style="color:var(--t3);font-weight:400">${d.skipped} skipped</span>`:''}</span>
+          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
+        </div>`;
+      if(d.rows && d.rows.length>0){
+        html+=`<div class="tbl-wrap"><table>
+          <thead><tr style="background:rgba(20,112,58,.06)"><th style="color:var(--su)">Country</th><th style="color:var(--su)">Quarter</th><th style="color:var(--su);text-align:right">Total Budget</th></tr></thead>
+          <tbody>${d.rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(20,112,58,.03)':''}">
+            <td>${esc(r.country)}</td><td>${esc(r.quarter)}</td>
+            <td class="mono" style="text-align:right;color:var(--ac)">$${fmt(r.total)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`;
+      }
+      html+=`</div>`;
+      res.innerHTML=html;
+
+      // Refresh budget total for current selection without full rebuild
+      invalidateCache();
+      refreshCfgBudgetTotal();
     })
-    .catch(()=>{toast('Upload failed','err');res.innerHTML='';});
+    .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');res.innerHTML='';});
+}
+
+// Partial refresh: reload budget data and update only the channel list section
+async function refreshCfgChannels(){
+  try{
+    const data = await api(`/api/budget/${country}/${quarter}`);
+    budgetData = data;
+    _cache.budget = data;
+    _cache.cacheKey = cacheKey();
+    const chCfg = g('ch-cfg');
+    if(chCfg){
+      if(data.channels.length===0){
+        chCfg.innerHTML=`<div style="text-align:center;padding:28px;border:2px dashed var(--b);border-radius:var(--r);color:var(--t3);font-size:13px">No channels yet — add your first one below</div>`;
+      } else {
+        chCfg.innerHTML=data.channels.map(ch=>{
+          const acts=ch.activities||[];
+          const actRows=acts.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 32px;border-top:1px dashed var(--b)">
+            <span style="font-size:11px;color:var(--t3)">&#x2514;</span>
+            <span style="font-size:12px;flex:1;color:var(--t2)">${esc(a.name)}</span>
+            <button class="btn btn-g btn-xs" onclick="openAM('${a.id}','${esc(a.name)}','${ch.id}')">&#x270E;</button>
+            <button class="btn btn-d btn-xs" onclick="deleteAct('${a.id}')">&#x2715;</button>
+          </div>`).join('');
+          return `<div class="cfg-row" style="flex-direction:column;align-items:stretch;padding:0">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:13px">${esc(ch.name)}</div>
+                <div class="mono" style="font-size:12px;color:var(--ac)">$${fmt(ch.budget)} · <span style="color:var(--t3);font-family:'Sora',sans-serif;font-size:11px">${acts.length} activit${acts.length===1?'y':'ies'}</span></div>
+              </div>
+              <button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>
+              <button class="btn btn-g btn-xs" onclick="openCM('${ch.id}','${esc(ch.name)}',${ch.budget})">Edit</button>
+              <button class="btn btn-d btn-xs" onclick="delChan('${ch.id}')">&#x2715;</button>
+            </div>
+            ${actRows}
+          </div>`;
+        }).join('');
+      }
+      // Also update allocation bar
+      const totCh=data.channels.reduce((s,c)=>s+(c.budget||0),0);
+      const rem=(data.total||0)-totCh;
+      const over=totCh>(data.total||0)&&data.total>0;
+      const p2=data.total>0?pct(totCh,data.total):0;
+      const barEl=document.querySelector('.bbar-wrap .bbar');
+      if(barEl){barEl.style.width=p2+'%';barEl.style.background=over?'var(--da)':'var(--ac)';}
+    }
+  }catch(e){/* silent — import result already shown */}
+}
+
+// Partial refresh: reload budget total for current selection
+async function refreshCfgBudgetTotal(){
+  try{
+    const data = await api(`/api/budget/${country}/${quarter}`);
+    budgetData = data;
+    _cache.budget = data;
+    _cache.cacheKey = cacheKey();
+    const totInput = g('cfg-tot');
+    if(totInput) totInput.value = data.total||'';
+  }catch(e){/* silent */}
 }
 
 // Mapping
@@ -1063,19 +1294,6 @@ function setMapSelects(rows){
     const bu=g(`mbu-${i}`),fc=g(`mfc-${i}`),mc=g(`mmc-${i}`);
     if(bu)bu.value=r.bu||'';if(fc)fc.value=r.finance_cat||'';if(mc)mc.value=r.marketing_cat||'';
   });
-}
-
-// Override renderCfg to set selects after build
-const _origRenderCfg=renderCfg;
-async function renderCfg(){
-  g('page').innerHTML='<div class="spinner"></div>';
-  try{
-    budgetData=await api(`/api/budget/${country}/${quarter}`);
-    let mappingRows=[];
-    try{mappingRows=await api('/api/mapping');}catch{mappingRows=budgetData.mapping||[];}
-    g('page').innerHTML=buildCfg(mappingRows);
-    setMapSelects(mappingRows);
-  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
 }
 
 // ── KEYBOARD ───────────────────────────────────────────────────
