@@ -285,15 +285,23 @@ function applyMapping(name){
 function initNav(){
   g('nav').innerHTML=`
     <button class="nav-btn active" id="nav-dash" onclick="sv('dashboard')">&#x1F4CA; Dashboard</button>
-    ${IS_ADMIN?`<button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Budget Config</button>`:''}`;
+    ${IS_ADMIN?`<button class="nav-btn" id="nav-recon" onclick="sv('recon')">&#x2696; Reconciliation</button>
+    <button class="nav-btn" id="nav-camp" onclick="sv('campaigns')">&#x1F30F; Campaigns</button>
+    <button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Budget Config</button>`:''}`;
 }
 function sv(v){
   view=v;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  g(v==='dashboard'?'nav-dash':'nav-cfg')?.classList.add('active');
+  const map={dashboard:'nav-dash',config:'nav-cfg',recon:'nav-recon',campaigns:'nav-camp'};
+  g(map[v])?.classList.add('active');
   render();
 }
-function render(){ view==='dashboard' ? renderDash() : renderCfg(); }
+function render(){
+  if(view==='dashboard') renderDash();
+  else if(view==='recon') renderRecon();
+  else if(view==='campaigns') renderCamp();
+  else renderCfg();
+}
 
 // ── DATA CACHE ─────────────────────────────────────────────────
 // Load once, update locally — no full reload after every action
@@ -356,9 +364,11 @@ async function renderDash(){
 function buildDash(){
   const totAct = entries.reduce((s,e)=>s+(e.actual||0),0);
   const totPln = entries.reduce((s,e)=>s+(e.planned||0),0);
+  const totCon = entries.reduce((s,e)=>s+(e.confirmed||0),0);
   const rem    = (budgetData.total||0) - totAct;
   const hasCfg = budgetData.total>0 || budgetData.channels.length>0;
   const p      = pct(totAct, budgetData.total);
+  const varPA  = totAct - totPln;
 
   // ── toolbar ──
   let tb = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
@@ -372,23 +382,36 @@ function buildDash(){
     </div>
   </div>`;
 
-  // ── country budget summary card ──
+  // ── 3-stage budget summary card ──
   let bc='';
   if(hasCfg){
+    const varClr = varPA===0?'var(--su)':varPA>0?'var(--da)':'var(--su)';
     bc=`<div class="card" style="padding:16px;margin-bottom:14px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:4px">${country} &#xB7; ${quarter} Total Budget</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:4px">${country} &#xB7; ${quarter} Budget</div>
           <div class="mono" style="font-size:26px;font-weight:500">$${fmt(budgetData.total)}</div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:right">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:right">
           <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Planned</div><div class="mono" style="color:var(--go);font-size:14px;font-weight:500">$${fmt(totPln)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Confirmed</div><div class="mono" style="color:var(--in);font-size:14px;font-weight:500">$${fmt(totCon)}</div></div>
           <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Actual</div><div class="mono" style="color:var(--su);font-size:14px;font-weight:500">$${fmt(totAct)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Remaining</div><div class="mono" style="color:${totAct>budgetData.total&&budgetData.total>0?'var(--da)':'var(--t2)'};font-size:14px;font-weight:500">$${fmt(Math.max(0,rem))}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Variance</div><div class="mono" style="color:${varClr};font-size:14px;font-weight:500">${varPA>0?'+':''}$${fmt(varPA)}</div></div>
         </div>
       </div>
-      <div class="bbar-wrap"><div class="bbar" style="width:${p}%;background:${bClr(totAct,budgetData.total)}"></div></div>
-      <div style="text-align:right;font-size:11px;color:var(--t3);margin-top:4px">${p}% used</div>
+      <div style="position:relative;height:8px;background:var(--s3);border-radius:99px;overflow:hidden;margin-bottom:4px">
+        <div style="position:absolute;height:100%;border-radius:99px;background:var(--go);opacity:.3;width:${pct(totPln,budgetData.total)}%"></div>
+        <div style="position:absolute;height:100%;border-radius:99px;background:var(--in);opacity:.4;width:${pct(totCon,budgetData.total)}%"></div>
+        <div style="position:absolute;height:100%;border-radius:99px;background:${bClr(totAct,budgetData.total)};width:${p}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:2px">
+        <span style="display:flex;gap:12px">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--go);opacity:.5;vertical-align:middle;margin-right:3px"></span>Planned</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--in);opacity:.6;vertical-align:middle;margin-right:3px"></span>Confirmed</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--ac);vertical-align:middle;margin-right:3px"></span>Actual</span>
+        </span>
+        <span>${p}% spent · $${fmt(Math.max(0,rem))} remaining</span>
+      </div>
     </div>`;
   } else {
     bc=`<div style="border-radius:var(--rlg);border:1px solid var(--wabr);padding:13px 16px;margin-bottom:14px;background:var(--wab);display:flex;align-items:center;gap:10px">
@@ -411,8 +434,10 @@ function buildDash(){
       const chEntries = entries.filter(e=>e.channel_id===ch.id);
       const chAct  = chEntries.reduce((s,e)=>s+(e.actual||0),0);
       const chPln  = chEntries.reduce((s,e)=>s+(e.planned||0),0);
+      const chCon  = chEntries.reduce((s,e)=>s+(e.confirmed||0),0);
       const over   = chAct>ch.budget && ch.budget>0;
       const cp     = pct(chAct, ch.budget);
+      const chVar  = chAct - chPln;
 
       // Activities for this channel
       const acts = ch.activities||[];
@@ -427,14 +452,14 @@ function buildDash(){
         const aEntries = chEntries.filter(e=>e.activity_id===act.id);
         const aAct = aEntries.reduce((s,e)=>s+(e.actual||0),0);
         const aPln = aEntries.reduce((s,e)=>s+(e.planned||0),0);
+        const aCon = aEntries.reduce((s,e)=>s+(e.confirmed||0),0);
         actHtml+=`<div class="act-card" id="act-${act.id}">
           <div class="act-head" onclick="toggleAct('${act.id}')">
             <div class="chev" id="achev-${act.id}">&#x25B6;</div>
             <div class="act-name">
               <span>${esc(act.name)}</span>
               <span class="badge b-gray">${aEntries.length} entr${aEntries.length===1?'y':'ies'}</span>
-              ${aPln>0?`<span class="mono" style="font-size:11px;color:var(--go)">$${fmt(aPln)} planned</span>`:''}
-              ${aAct>0?`<span class="mono" style="font-size:11px;color:var(--su)">$${fmt(aAct)} actual</span>`:''}
+              <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(aPln)} · C:$${fmt(aCon)} · A:$${fmt(aAct)}</span>
             </div>
             <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
               <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}','${act.id}')">+ Add</button>
@@ -464,6 +489,7 @@ function buildDash(){
         </div>`;
       }
 
+      const varClr = chVar===0?'var(--su)':chVar>0?'var(--da)':'var(--su)';
       chs+=`<div class="ch-card" id="ch-${ch.id}">
         <div class="ch-head" onclick="toggleCh('${ch.id}')">
           <div class="chev" id="chev-${ch.id}">&#x25B6;</div>
@@ -472,9 +498,13 @@ function buildDash(){
               ${esc(ch.name)}
               ${over?'<span style="color:var(--da);font-size:12px">&#x26A0; Over</span>':''}
               <span class="badge ${over?'b-red':'b-teal'}">$${fmt(chAct)} / $${fmt(ch.budget)}</span>
-              <span style="font-size:11px;color:var(--t3)">${acts.length} activit${acts.length===1?'y':'ies'} &#xB7; ${chEntries.length} entr${chEntries.length===1?'y':'ies'}</span>
+              <span style="font-size:11px;color:var(--t3)">${acts.length} activit${acts.length===1?'y':'ies'} · ${chEntries.length} entr${chEntries.length===1?'y':'ies'}</span>
             </div>
-            <div class="bbar-wrap" style="max-width:400px"><div class="bbar" style="width:${cp}%;background:${bClr(chAct,ch.budget)}"></div></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:3px">
+              <div class="bbar-wrap" style="max-width:300px;flex:1"><div class="bbar" style="width:${cp}%;background:${bClr(chAct,ch.budget)}"></div></div>
+              <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(chPln)} · C:$${fmt(chCon)} · A:$${fmt(chAct)}</span>
+              ${chVar!==0?`<span class="mono" style="font-size:10px;color:${varClr}">${chVar>0?'+':''}$${fmt(chVar)}</span>`:''}
+            </div>
           </div>
           <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
             ${IS_ADMIN?`<button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>`:''}
@@ -508,22 +538,24 @@ function buildFlatTable(rows){
 
 function buildEntryTable(rows, showActivity){
   if(!rows.length) return `<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No entries yet — click <strong>+ Add</strong></div>`;
-  const cols = showActivity ? ['Month','Activity','Finance Cat.','Mkt Cat.','Description','Planned','Actual','Vendor','JIRA','Status','Invoices',''] : ['Month','Finance Cat.','Mkt Cat.','Description','Planned','Actual','Vendor','JIRA','Status','Invoices',''];
+  const cols = showActivity ? ['Month','Activity','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status',''] : ['Month','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status',''];
   const span = cols.length;
   const rowsHtml = rows.map(e=>{
+    const v = (e.actual||0)-(e.planned||0);
+    const vClr = v===0?'var(--t3)':v>0?'var(--da)':'var(--su)';
     const invLinks=(e.invoice_names||[]).map((n,i)=>`<a href="/api/invoice/${e.id}/${i}" style="color:var(--in);text-decoration:underline;font-size:11px;display:block;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(n)}">${esc(n)}</a>`).join('');
     return `<tr>
       <td style="color:var(--t2);white-space:nowrap">${mLbl(e.month)}</td>
       ${showActivity?`<td style="font-size:11.5px;color:var(--in);font-weight:500">${esc(e.activity_name||'—')}</td>`:''}
       <td style="color:var(--t2)">${esc(e.finance_cat||'—')}</td>
-      <td style="font-size:11.5px;color:var(--t2)">${esc(e.marketing_cat||'—')}</td>
       <td style="max-width:120px"><span title="${esc(e.description)}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.description||'—')}</span></td>
       <td class="mono" style="color:var(--go);white-space:nowrap">${e.planned?'$'+fmt(e.planned):'—'}</td>
+      <td class="mono" style="color:var(--in);white-space:nowrap">${e.confirmed?'$'+fmt(e.confirmed):'—'}</td>
       <td class="mono" style="color:var(--su);white-space:nowrap">${e.actual?'$'+fmt(e.actual):'—'}</td>
+      <td class="mono" style="color:${vClr};white-space:nowrap;font-size:11px">${(e.planned||e.actual)?(v>0?'+':'')+('$'+fmt(v)):'—'}</td>
       <td style="font-size:11.5px">${esc(e.vendor||'—')}</td>
       <td><span class="mono" style="font-size:11px;color:var(--in)">${esc(e.jira||'—')}</span></td>
-      <td>${e.approved?'<span class="badge b-green">&#x2713; Approved</span>':'<span class="badge b-amber">&#x23F3; Pending</span>'}</td>
-      <td>${invLinks||'—'}</td>
+      <td>${e.approved?'<span class="badge b-green">&#x2713;</span>':'<span class="badge b-amber">&#x23F3;</span>'}</td>
       <td><div style="display:flex;gap:4px">
         <button class="btn btn-g btn-xs" onclick="openEM('${e.id}',null,null)">&#x270E;</button>
         <button class="btn btn-d btn-xs" onclick="openDM('${e.id}')">&#x2715;</button>
@@ -920,7 +952,63 @@ async function renderCfg(){
     try{mappingRows=await api('/api/mapping');}catch(e){mappingRows=budgetData.mapping||[];}
     g('page').innerHTML = buildCfg(mappingRows);
     setMapSelects(mappingRows);
+    loadBudgetOverview();
   }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
+}
+
+// Load all-markets budget overview table
+async function loadBudgetOverview(){
+  const body=g('budget-overview-body');
+  if(!body) return;
+  try{
+    const data = await api('/api/budget_summary');
+    if(!data.length){
+      body.innerHTML='<div style="text-align:center;padding:16px;color:var(--t3);font-size:12px">No budgets configured yet. Upload a budget CSV or set individual market budgets above.</div>';
+      return;
+    }
+    // Group by quarter
+    const byQ={};
+    data.forEach(r=>{ if(!byQ[r.quarter]) byQ[r.quarter]=[]; byQ[r.quarter].push(r); });
+
+    let html='';
+    for(const q of QS){
+      const rows=byQ[q];
+      if(!rows||!rows.length) continue;
+      const qTotal=rows.reduce((s,r)=>s+r.total,0);
+      const qAlloc=rows.reduce((s,r)=>s+r.allocated,0);
+      const qDev=qAlloc-qTotal;
+      html+=`<div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span>${q}</span>
+          <span class="mono" style="font-weight:400;color:var(--t3);font-size:10px">Budget $${fmt(qTotal)} · Allocated $${fmt(qAlloc)} · ${qDev===0?'<span style="color:var(--su)">Balanced</span>':qDev>0?'<span style="color:var(--da)">Over +$'+fmt(qDev)+'</span>':'<span style="color:var(--wa)">Under $'+fmt(Math.abs(qDev))+'</span>'}</span>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Market</th><th style="text-align:right">Country Budget</th><th style="text-align:right">Channels</th><th style="text-align:right">Allocated</th><th style="text-align:right">Deviation</th></tr></thead>
+          <tbody>${rows.map((r,i)=>{
+            const devClr=r.deviation===0?'var(--su)':r.deviation>0?'var(--da)':'var(--wa)';
+            const isActive=r.country===country&&r.quarter===quarter;
+            return `<tr style="cursor:pointer;${isActive?'background:var(--acb);':''}" onclick="country='${r.country}';quarter='${r.quarter}';renderCfg()">
+              <td style="font-weight:${isActive?'600':'400'}">${esc(r.country)}${isActive?' ←':''}</td>
+              <td class="mono" style="text-align:right">${r.total?'$'+fmt(r.total):'<span style="color:var(--t3)">—</span>'}</td>
+              <td style="text-align:right;color:var(--t3)">${r.channels}</td>
+              <td class="mono" style="text-align:right;color:var(--ac)">${r.allocated?'$'+fmt(r.allocated):'—'}</td>
+              <td class="mono" style="text-align:right;color:${devClr}">${r.total||r.allocated?(r.deviation>0?'+':'')+('$'+fmt(r.deviation)):'—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+          <tfoot><tr>
+            <td style="font-weight:600">${q} Total</td>
+            <td class="mono" style="text-align:right;font-weight:600">$${fmt(qTotal)}</td>
+            <td style="text-align:right;color:var(--t3)">${rows.reduce((s,r)=>s+r.channels,0)}</td>
+            <td class="mono" style="text-align:right;font-weight:600;color:var(--ac)">$${fmt(qAlloc)}</td>
+            <td class="mono" style="text-align:right;font-weight:600;color:${qDev===0?'var(--su)':qDev>0?'var(--da)':'var(--wa)'}">${qDev>0?'+':''}$${fmt(qDev)}</td>
+          </tr></tfoot>
+        </table></div>
+      </div>`;
+    }
+    body.innerHTML=html||'<div style="color:var(--t3);font-size:12px">No budget data found.</div>';
+  }catch(e){
+    body.innerHTML=`<div style="color:var(--t3);font-size:12px">Could not load overview: ${esc(e.message)}</div>`;
+  }
 }
 
 function buildCfg(mappingRows){
@@ -928,6 +1016,10 @@ function buildCfg(mappingRows){
   const rem=(budgetData.total||0)-totCh;
   const over=totCh>(budgetData.total||0)&&budgetData.total>0;
   const p2=budgetData.total>0?pct(totCh,budgetData.total):0;
+  const hasBudget=budgetData.total>0;
+  const hasChannels=budgetData.channels.length>0;
+  const deviation=totCh-(budgetData.total||0);
+  const devAbs=Math.abs(deviation);
 
   // Selector
   const selHtml=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
@@ -938,10 +1030,51 @@ function buildCfg(mappingRows){
     <span style="font-size:12px;color:var(--t3)">Configuring <strong style="color:var(--t2)">${country} &#xB7; ${quarter}</strong></span>
   </div>`;
 
-  // Budget total
-  const bar2=budgetData.total>0?`<div class="bbar-wrap" style="margin:8px 0 4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
-    <div style="font-size:11px;color:var(--t3)">Allocated $${fmt(totCh)} of $${fmt(budgetData.total)} &#xB7; Unallocated $${fmt(Math.max(0,rem))}</div>`:'';
-  const warn=over?`<div class="warn-banner">&#x26A0; Channel budgets exceed country total by $${fmt(Math.abs(rem))}. Adjust before saving.</div>`:'';
+  // ── BUDGET OVERVIEW CARD ──
+  // Show stats: Country Budget | Channel Allocated | Deviation
+  let overviewInner='';
+  if(hasBudget || hasChannels){
+    const devClr = deviation===0 ? 'var(--su)' : deviation>0 ? 'var(--da)' : 'var(--wa)';
+    const devLbl = deviation===0 ? 'Balanced' : deviation>0 ? 'Over-allocated' : 'Under-allocated';
+    const devIcon = deviation===0 ? '&#x2713;' : '&#x26A0;';
+
+    overviewInner=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:${(hasBudget&&hasChannels)?'12':'0'}px">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Country Budget</div>
+          <div class="mono" style="font-size:22px;font-weight:500;color:${hasBudget?'var(--t)':'var(--t3)'}">${hasBudget?'$'+fmt(budgetData.total):'Not set'}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Channel Allocated</div>
+          <div class="mono" style="font-size:22px;font-weight:500;color:${hasChannels?'var(--ac)':'var(--t3)'}">${hasChannels?'$'+fmt(totCh):'No channels'}</div>
+          ${hasChannels?`<div style="font-size:11px;color:var(--t3);margin-top:2px">${budgetData.channels.length} channel${budgetData.channels.length===1?'':'s'}</div>`:''}
+        </div>
+        ${(hasBudget&&hasChannels)?`<div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
+          <div class="mono" style="font-size:22px;font-weight:500;color:${devClr}">${deviation>0?'+':''}$${fmt(deviation)}</div>
+          <div style="font-size:11px;color:${devClr};margin-top:2px">${devIcon} ${devLbl}</div>
+        </div>`:`<div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
+          <div style="font-size:13px;color:var(--t3);margin-top:4px">${!hasBudget&&hasChannels?'Set country budget to see deviation':!hasChannels&&hasBudget?'Add channels to see deviation':'—'}</div>
+        </div>`}
+      </div>
+      ${(hasBudget&&hasChannels)?`<div class="bbar-wrap" style="margin-top:4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
+      <div style="font-size:11px;color:var(--t3);margin-top:4px;display:flex;justify-content:space-between">
+        <span>${p2}% allocated</span>
+        <span>Remaining: $${fmt(Math.max(0,rem))}</span>
+      </div>`:''}
+      ${over?`<div class="warn-banner" style="margin-top:10px">&#x26A0; Channel budgets exceed country total by $${fmt(devAbs)}. Adjust channel budgets or increase the country total.</div>`:''}`;
+  }
+  const overviewHtml=`<div id="cfg-overview" ${(hasBudget||hasChannels)?'class="card" style="padding:16px 18px;margin-bottom:14px"':'style="margin-bottom:0"'}>${overviewInner}</div>`;
+
+  // ── BUDGET ALL-MARKETS TABLE ──
+  // Populated async after render
+  let allMarketsHtml=`<div class="card" style="padding:0;margin-bottom:14px;overflow:hidden">
+    <div style="padding:12px 18px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">All Markets — Budget Overview</div>
+      <button class="btn btn-g btn-xs" onclick="loadBudgetOverview()">&#x21BB; Refresh</button>
+    </div>
+    <div id="budget-overview-body" style="padding:12px 18px;font-size:12px;color:var(--t3)">Loading...</div>
+  </div>`;
 
   // Channels list with activity sub-rows
   const chListHtml = budgetData.channels.length===0
@@ -980,16 +1113,16 @@ function buildCfg(mappingRows){
     <td style="padding:6px 10px;text-align:center"><button onclick="g('mrow-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:13px">&#x2715;</button></td>
   </tr>`).join('');
 
-  return selHtml + `
-  <!-- COUNTRY BUDGET -->
+  return selHtml + overviewHtml + allMarketsHtml + `
+
+  <!-- SET COUNTRY BUDGET -->
   <div class="card" style="padding:18px;margin-bottom:14px">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Country Total Budget</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Set Country Budget</div>
     <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:4px">
-      <div class="field" style="max-width:280px"><label>Total Budget (USD)</label>
+      <div class="field" style="max-width:280px"><label>${country} · ${quarter} Total Budget (USD)</label>
         <input type="number" id="cfg-tot" min="0" step="1000" value="${budgetData.total||''}" placeholder="Enter total budget..."></div>
       <button class="btn btn-p btn-sm" onclick="saveTot()">Save</button>
     </div>
-    ${bar2}${warn}
     <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--b)">
       <div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px">Or upload budgets for multiple markets at once:</div>
       <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
@@ -1004,7 +1137,6 @@ function buildCfg(mappingRows){
             <span style="color:var(--t3)">Country, Quarter, Total Budget (USD)</span><br>
             <span style="color:var(--t2)">TH, Q1, 150000</span><br>
             <span style="color:var(--t2)">SG, Q1, 80000</span><br>
-            <span style="color:var(--t2)">MY, Q2, 60000</span><br>
             <span style="color:var(--t3);font-size:10px">&#x2022; Overwrites existing total if already set</span>
           </div>
         </div>
@@ -1081,8 +1213,8 @@ async function saveTot(){
   budgetData.total=total;
   _cache.budget=budgetData;
   toast('Budget saved ✓','ok');
-  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).catch(()=>toast('Sync error','err'));
-  renderCfg();
+  rebuildOverviewCard();
+  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).then(()=>loadBudgetOverview()).catch(()=>toast('Sync error','err'));
 }
 
 function openCM(id,name,budget){
@@ -1143,13 +1275,29 @@ function importChFile(inp){
   fetch('/api/import/channels',{method:'POST',body:fd})
     .then(r=>r.json())
     .then(d=>{
-      if(d.error){toast(d.error,'err');prev.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${d.error}</div>`;return;}
+      if(d.error){toast(d.error,'err');prev.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${esc(d.error)}</div>`;return;}
 
-      // Build results table
-      let html=`<div style="border:1px solid var(--subr);border-radius:var(--r);overflow:hidden;margin-top:8px">
-        <div style="padding:9px 14px;background:var(--sub);display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12px;font-weight:600;color:var(--su)">&#x2713; Imported ${d.saved} channel${d.saved===1?'':'s'}${d.skipped>0?` · <span style="color:var(--t3);font-weight:400">${d.skipped} skipped</span>`:''}</span>
-          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
+      const hasSaved = d.saved > 0;
+      const bg = hasSaved ? 'var(--sub)' : 'var(--wab)';
+      const br = hasSaved ? 'var(--subr)' : 'var(--wabr)';
+      const clr = hasSaved ? 'var(--su)' : 'var(--wa)';
+
+      // Skip detail
+      let skipInfo='';
+      if(d.skipped>0){
+        const parts=[];
+        if(d.skipped_dups>0) parts.push(`${d.skipped_dups} already exist`);
+        if(d.skipped_invalid>0) parts.push(`${d.skipped_invalid} invalid`);
+        skipInfo=`<div style="font-size:11px;color:var(--t2);margin-top:3px">${d.skipped} skipped (${parts.join(', ')})${d.skipped_dups>0&&!hasSaved?' — all channels in this file already exist in the sheet. To re-import, delete existing channels first or use a file with new data.':''}</div>`;
+      }
+
+      let html=`<div style="border:1px solid ${br};border-radius:var(--r);overflow:hidden;margin-top:8px">
+        <div style="padding:10px 14px;background:${bg};display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div>
+            <span style="font-size:12px;font-weight:600;color:${clr}">${hasSaved?'&#x2713;':'&#x26A0;'} ${hasSaved?'Imported '+d.saved+' channel'+(d.saved===1?'':'s'):'No new channels imported'}</span>
+            ${skipInfo}
+          </div>
+          <button class="btn btn-xs btn-g" style="flex-shrink:0" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
         </div>`;
       if(d.rows && d.rows.length>0){
         html+=`<div class="tbl-wrap"><table>
@@ -1163,9 +1311,8 @@ function importChFile(inp){
       html+=`</div>`;
       prev.innerHTML=html;
 
-      // Refresh channel list in-place without full page rebuild
-      invalidateCache();
-      refreshCfgChannels();
+      // Refresh channel list in-place
+      if(hasSaved){ invalidateCache(); refreshCfgChannels(); loadBudgetOverview(); }
     })
     .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');prev.innerHTML='';});
 }
@@ -1202,6 +1349,7 @@ function importBudgetFile(inp){
       // Refresh budget total for current selection without full rebuild
       invalidateCache();
       refreshCfgBudgetTotal();
+      loadBudgetOverview();
     })
     .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');res.innerHTML='';});
 }
@@ -1241,26 +1389,72 @@ async function refreshCfgChannels(){
         }).join('');
       }
       // Also update allocation bar
-      const totCh=data.channels.reduce((s,c)=>s+(c.budget||0),0);
-      const rem=(data.total||0)-totCh;
-      const over=totCh>(data.total||0)&&data.total>0;
-      const p2=data.total>0?pct(totCh,data.total):0;
-      const barEl=document.querySelector('.bbar-wrap .bbar');
-      if(barEl){barEl.style.width=p2+'%';barEl.style.background=over?'var(--da)':'var(--ac)';}
+      rebuildOverviewCard();
     }
   }catch(e){/* silent — import result already shown */}
 }
 
-// Partial refresh: reload budget total for current selection
+// Partial refresh: reload budget total and update overview card + input
 async function refreshCfgBudgetTotal(){
   try{
     const data = await api(`/api/budget/${country}/${quarter}`);
     budgetData = data;
     _cache.budget = data;
     _cache.cacheKey = cacheKey();
+    // Update input
     const totInput = g('cfg-tot');
     if(totInput) totInput.value = data.total||'';
+    // Rebuild overview card
+    rebuildOverviewCard();
   }catch(e){/* silent */}
+}
+
+// Rebuild just the overview card from current budgetData
+function rebuildOverviewCard(){
+  const el = g('cfg-overview');
+  if(!el) return;
+  const totCh = budgetData.channels.reduce((s,c)=>s+(c.budget||0),0);
+  const hasBudget = budgetData.total>0;
+  const hasChannels = budgetData.channels.length>0;
+  const deviation = totCh - (budgetData.total||0);
+  const devAbs = Math.abs(deviation);
+  const over = totCh>(budgetData.total||0)&&budgetData.total>0;
+  const p2 = budgetData.total>0?pct(totCh,budgetData.total):0;
+  const rem = (budgetData.total||0)-totCh;
+
+  if(!hasBudget && !hasChannels){
+    el.className=''; el.style.cssText='margin-bottom:0'; el.innerHTML=''; return;
+  }
+  el.className='card'; el.style.cssText='padding:16px 18px;margin-bottom:14px';
+  const devClr = deviation===0?'var(--su)':deviation>0?'var(--da)':'var(--wa)';
+  const devLbl = deviation===0?'Balanced':deviation>0?'Over-allocated':'Under-allocated';
+  const devIcon = deviation===0?'&#x2713;':'&#x26A0;';
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:${(hasBudget&&hasChannels)?'12':'0'}px">
+    <div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Country Budget</div>
+      <div class="mono" style="font-size:22px;font-weight:500;color:${hasBudget?'var(--t)':'var(--t3)'}">${hasBudget?'$'+fmt(budgetData.total):'Not set'}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Channel Allocated</div>
+      <div class="mono" style="font-size:22px;font-weight:500;color:${hasChannels?'var(--ac)':'var(--t3)'}">${hasChannels?'$'+fmt(totCh):'No channels'}</div>
+      ${hasChannels?`<div style="font-size:11px;color:var(--t3);margin-top:2px">${budgetData.channels.length} channel${budgetData.channels.length===1?'':'s'}</div>`:''}
+    </div>
+    ${(hasBudget&&hasChannels)?`<div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
+      <div class="mono" style="font-size:22px;font-weight:500;color:${devClr}">${deviation>0?'+':''}$${fmt(deviation)}</div>
+      <div style="font-size:11px;color:${devClr};margin-top:2px">${devIcon} ${devLbl}</div>
+    </div>`:`<div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
+      <div style="font-size:13px;color:var(--t3);margin-top:4px">${!hasBudget&&hasChannels?'Set country budget to see deviation':!hasChannels&&hasBudget?'Add channels to see deviation':'—'}</div>
+    </div>`}
+  </div>
+  ${(hasBudget&&hasChannels)?`<div class="bbar-wrap" style="margin-top:4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
+  <div style="font-size:11px;color:var(--t3);margin-top:4px;display:flex;justify-content:space-between">
+    <span>${p2}% allocated</span>
+    <span>Remaining: $${fmt(Math.max(0,rem))}</span>
+  </div>`:''}
+  ${over?`<div class="warn-banner" style="margin-top:10px">&#x26A0; Channel budgets exceed country total by $${fmt(devAbs)}. Adjust channel budgets or increase the country total.</div>`:''}`;
 }
 
 // Mapping
@@ -1294,6 +1488,149 @@ function setMapSelects(rows){
     const bu=g(`mbu-${i}`),fc=g(`mfc-${i}`),mc=g(`mmc-${i}`);
     if(bu)bu.value=r.bu||'';if(fc)fc.value=r.finance_cat||'';if(mc)mc.value=r.marketing_cat||'';
   });
+}
+
+// ── RECONCILIATION VIEW ───────────────────────────────────────
+async function renderRecon(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    const tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:16px;font-weight:600">&#x2696; Quarter Reconciliation</div>
+        <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderRecon()">${q}</button>`).join('')}</div>
+      </div>
+      <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export All</a>
+    </div>`;
+
+    const data = await api(`/api/reconciliation/${quarter}`);
+    if(!data.length){
+      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No budget data for ${quarter}. Configure budgets first.</div>`;
+      return;
+    }
+
+    // Summary totals
+    const totBud=data.reduce((s,r)=>s+r.plan_budget,0);
+    const totPln=data.reduce((s,r)=>s+r.sum_planned,0);
+    const totCon=data.reduce((s,r)=>s+r.sum_confirmed,0);
+    const totAct=data.reduce((s,r)=>s+r.sum_actual,0);
+    const totVar=totAct-totPln;
+    const totFlags=data.reduce((s,r)=>s+r.flags.no_actual+r.flags.no_jira+r.flags.no_invoice,0);
+    const varClr=totVar===0?'var(--su)':totVar>0?'var(--da)':'var(--su)';
+
+    let stats=`<div class="stats-row" style="margin-bottom:16px">
+      <div class="stat"><div class="stat-l">Quarter Budget</div><div class="stat-v">$${fmt(totBud)}</div></div>
+      <div class="stat"><div class="stat-l">Total Planned</div><div class="stat-v" style="color:var(--go)">$${fmt(totPln)}</div></div>
+      <div class="stat"><div class="stat-l">Total Confirmed</div><div class="stat-v" style="color:var(--in)">$${fmt(totCon)}</div></div>
+      <div class="stat"><div class="stat-l">Total Actual</div><div class="stat-v" style="color:var(--su)">$${fmt(totAct)}</div></div>
+      <div class="stat"><div class="stat-l">Variance (A-P)</div><div class="stat-v" style="color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</div></div>
+      <div class="stat"><div class="stat-l">&#x26A0; Open Flags</div><div class="stat-v" style="color:${totFlags>0?'var(--wa)':'var(--su)'}">${totFlags}</div></div>
+    </div>`;
+
+    let tbl=`<div class="card" style="overflow:hidden">
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Market</th><th style="text-align:right">Budget</th><th style="text-align:right">Planned</th>
+          <th style="text-align:right">Confirmed</th><th style="text-align:right">Actual</th>
+          <th style="text-align:right">Variance</th><th style="text-align:center">Entries</th>
+          <th>Flags</th>
+        </tr></thead>
+        <tbody>${data.map(r=>{
+          const v=r.var_plan_vs_actual;
+          const vc=v===0?'var(--su)':v>0?'var(--da)':'var(--su)';
+          const flags=[];
+          if(r.flags.no_actual>0) flags.push(`<span class="badge b-amber" title="${r.flags.no_actual} entries without actuals">${r.flags.no_actual} no actual</span>`);
+          if(r.flags.no_jira>0) flags.push(`<span class="badge b-amber" title="${r.flags.no_jira} entries without JIRA">${r.flags.no_jira} no JIRA</span>`);
+          if(r.flags.no_invoice>0) flags.push(`<span class="badge b-red" title="${r.flags.no_invoice} paid entries without invoices">${r.flags.no_invoice} no invoice</span>`);
+          return `<tr style="cursor:pointer" onclick="country='${r.country}';sv('dashboard')">
+            <td style="font-weight:600">${esc(r.country)}</td>
+            <td class="mono" style="text-align:right">$${fmt(r.plan_budget)}</td>
+            <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.sum_planned)}</td>
+            <td class="mono" style="text-align:right;color:var(--in)">$${fmt(r.sum_confirmed)}</td>
+            <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.sum_actual)}</td>
+            <td class="mono" style="text-align:right;color:${vc}">${v>0?'+':''}$${fmt(v)}</td>
+            <td style="text-align:center">${r.entries}</td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap">${flags.join('')||'<span class="badge b-green">&#x2713; Clean</span>'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr>
+          <td style="font-weight:600">${quarter} Total</td>
+          <td class="mono" style="text-align:right;font-weight:600">$${fmt(totBud)}</td>
+          <td class="mono" style="text-align:right;font-weight:600;color:var(--go)">$${fmt(totPln)}</td>
+          <td class="mono" style="text-align:right;font-weight:600;color:var(--in)">$${fmt(totCon)}</td>
+          <td class="mono" style="text-align:right;font-weight:600;color:var(--su)">$${fmt(totAct)}</td>
+          <td class="mono" style="text-align:right;font-weight:600;color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</td>
+          <td style="text-align:center;font-weight:600">${data.reduce((s,r)=>s+r.entries,0)}</td>
+          <td></td>
+        </tr></tfoot>
+      </table></div>
+    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:8px">Click any row to view that market's dashboard. Variance = Actual minus Planned. Flags show data quality issues that need attention before month-end close.</div>`;
+
+    g('page').innerHTML=tb+stats+tbl;
+  }catch(e){
+    g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
+  }
+}
+
+// ── CAMPAIGNS VIEW ────────────────────────────────────────────
+async function renderCamp(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    const tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:16px;font-weight:600">&#x1F30F; Campaigns — Cross-Country View</div>
+        <div class="qtabs">${['All',...QS].map(q=>`<button class="qtab ${(q==='All'&&!quarter)||(q===quarter)?'active':''}" onclick="${q==='All'?"quarter=''":'quarter=\''+q+'\''};renderCamp()">${q}</button>`).join('')}</div>
+      </div>
+    </div>`;
+
+    const data = await api(`/api/campaigns${quarter?'?quarter='+quarter:''}`);
+    if(!data.length){
+      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No campaign data found${quarter?' for '+quarter:''}. Campaigns are created from Activity names on entries.</div>`;
+      return;
+    }
+
+    let cards=data.map(c=>{
+      const v=c.variance;
+      const vc=v===0?'var(--su)':v>0?'var(--da)':'var(--su)';
+      return `<div class="card" style="margin-bottom:10px;overflow:hidden">
+        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <div>
+            <div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px">${esc(c.campaign)}
+              <span class="badge b-blue">${c.market_count} market${c.market_count===1?'':'s'}</span>
+              <span class="badge b-gray">${c.total_entries} entries</span>
+            </div>
+            <div class="mono" style="font-size:11px;color:var(--t3);margin-top:3px">
+              P: $${fmt(c.total_planned)} · C: $${fmt(c.total_confirmed)} · A: $${fmt(c.total_actual)}
+              ${v!==0?` · <span style="color:${vc}">Var: ${v>0?'+':''}$${fmt(v)}</span>`:''}
+            </div>
+          </div>
+          <div class="chev" style="font-size:10px;color:var(--t3)">&#x25BC;</div>
+        </div>
+        <div style="display:none;border-top:1px solid var(--b)">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Market</th><th>Channel</th><th style="text-align:right">Planned</th><th style="text-align:right">Confirmed</th><th style="text-align:right">Actual</th><th style="text-align:right">Var</th><th style="text-align:center">Entries</th></tr></thead>
+            <tbody>${c.countries.map(co=>{
+              const cv=(co.actual||0)-(co.planned||0);
+              const ccl=cv===0?'var(--t3)':cv>0?'var(--da)':'var(--su)';
+              return `<tr style="cursor:pointer" onclick="country='${co.country}';sv('dashboard')">
+                <td style="font-weight:500">${esc(co.country)}</td>
+                <td style="color:var(--t2);font-size:12px">${esc(co.channel||'—')}</td>
+                <td class="mono" style="text-align:right;color:var(--go)">$${fmt(co.planned)}</td>
+                <td class="mono" style="text-align:right;color:var(--in)">$${fmt(co.confirmed)}</td>
+                <td class="mono" style="text-align:right;color:var(--su)">$${fmt(co.actual)}</td>
+                <td class="mono" style="text-align:right;color:${ccl}">${cv!==0?(cv>0?'+':'')+('$'+fmt(cv)):'—'}</td>
+                <td style="text-align:center">${co.entries}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    g('page').innerHTML=tb+cards;
+  }catch(e){
+    g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
+  }
 }
 
 // ── KEYBOARD ───────────────────────────────────────────────────

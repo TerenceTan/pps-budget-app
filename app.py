@@ -756,6 +756,8 @@ def api_import_channels():
 
     saved, skipped = 0, 0
     saved_rows = []
+    skipped_dups = 0
+    skipped_invalid = 0
     ws_ch = get_sheet(TAB_CHANNELS)
     ws_bud = get_sheet(TAB_BUDGETS)
     existing_ch = ws_ch.get_all_records()
@@ -765,6 +767,7 @@ def api_import_channels():
     for row in parsed_rows:
         if len(row) < 3:
             skipped += 1
+            skipped_invalid += 1
             continue
         if len(row) >= 4:
             country_val = row[0].strip()
@@ -785,6 +788,7 @@ def api_import_channels():
 
         if not country_val or not quarter_val or not name_val:
             skipped += 1
+            skipped_invalid += 1
             continue
 
         if not quarter_val.startswith('Q'):
@@ -797,9 +801,10 @@ def api_import_channels():
             existing_bud.append({'country':country_val,'quarter':quarter_val,'total_budget':0})
 
         # Skip duplicate channel
-        dup = any(r['country']==country_val and r['quarter']==quarter_val and r['name']==name_val for r in existing_ch)
+        dup = any(r['country']==country_val and r['quarter']==quarter_val and str(r['name']).strip()==name_val for r in existing_ch)
         if dup:
             skipped += 1
+            skipped_dups += 1
             continue
 
         sort_order = len([r for r in existing_ch if r['country']==country_val and r['quarter']==quarter_val])
@@ -811,7 +816,12 @@ def api_import_channels():
 
     invalidate_cache(TAB_CHANNELS)
     invalidate_cache(TAB_BUDGETS)
-    return jsonify({"ok": True, "saved": saved, "skipped": skipped, "rows": saved_rows})
+    return jsonify({
+        "ok": True, "saved": saved, "skipped": skipped,
+        "skipped_dups": skipped_dups, "skipped_invalid": skipped_invalid,
+        "rows": saved_rows,
+        "total_parsed": len(parsed_rows),
+    })
 
 # ── BULK BUDGET IMPORT ─────────────────────────────────────────
 @app.route("/api/import/budgets", methods=["POST"])
@@ -891,6 +901,160 @@ def api_import_budgets():
 
     invalidate_cache(TAB_BUDGETS)
     return jsonify({"ok": True, "saved": saved, "skipped": skipped, "rows": saved_rows})
+
+# ── BUDGET SUMMARY (all markets) ─────────────────────────────
+@app.route("/api/budget_summary")
+@require_login
+@require_admin
+def api_budget_summary():
+    """Returns all budget records with their channel allocation totals."""
+    try:
+        budgets = get_records_cached(TAB_BUDGETS)
+        channels = get_records_cached(TAB_CHANNELS)
+        result = []
+        for b in budgets:
+            co, q = b["country"], b["quarter"]
+            total = float(b.get("total_budget") or 0)
+            ch_list = [c for c in channels if c["country"]==co and c["quarter"]==q]
+            allocated = sum(float(c.get("budget") or 0) for c in ch_list)
+            result.append({
+                "country": co, "quarter": q,
+                "total": total, "allocated": allocated,
+                "channels": len(ch_list),
+                "deviation": allocated - total,
+            })
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ── RECONCILIATION ───────────────────────────────────────────
+@app.route("/api/reconciliation/<quarter>")
+@require_login
+@require_admin
+def api_reconciliation(quarter):
+    """
+    Quarter-level reconciliation: for each market in the given quarter,
+    returns plan budget vs sum(planned) vs sum(confirmed) vs sum(actual)
+    with gap flags.
+    """
+    try:
+        budgets  = get_records_cached(TAB_BUDGETS)
+        channels = get_records_cached(TAB_CHANNELS)
+        entries  = get_records_cached(TAB_ENTRIES)
+
+        # All markets that have either a budget or entries for this quarter
+        markets_with_data = set()
+        for b in budgets:
+            if b["quarter"] == quarter:
+                markets_with_data.add(b["country"])
+        for e in entries:
+            if e.get("quarter") == quarter:
+                markets_with_data.add(e["country"])
+
+        result = []
+        for mkt in sorted(markets_with_data):
+            brow = next((b for b in budgets if b["country"]==mkt and b["quarter"]==quarter), None)
+            plan_budget = float(brow["total_budget"]) if brow else 0
+
+            ch_list = [c for c in channels if c["country"]==mkt and c["quarter"]==quarter]
+            ch_allocated = sum(float(c.get("budget") or 0) for c in ch_list)
+
+            mkt_entries = [e for e in entries if e["country"]==mkt and e.get("quarter")==quarter]
+            sum_planned   = sum(float(e.get("planned")   or 0) for e in mkt_entries)
+            sum_confirmed = sum(float(e.get("confirmed") or 0) for e in mkt_entries)
+            sum_actual    = sum(float(e.get("actual")    or 0) for e in mkt_entries)
+            entry_count   = len(mkt_entries)
+
+            # Health flags
+            no_actual    = sum(1 for e in mkt_entries if float(e.get("planned") or 0) > 0 and float(e.get("actual") or 0) == 0)
+            no_confirmed = sum(1 for e in mkt_entries if float(e.get("planned") or 0) > 0 and float(e.get("confirmed") or 0) == 0)
+            no_jira      = sum(1 for e in mkt_entries if not e.get("jira"))
+            no_invoice   = sum(1 for e in mkt_entries if float(e.get("actual") or 0) > 0 and not e.get("invoice_names","[]").strip("[]"))
+
+            result.append({
+                "country": mkt,
+                "plan_budget": plan_budget,
+                "ch_allocated": ch_allocated,
+                "sum_planned": sum_planned,
+                "sum_confirmed": sum_confirmed,
+                "sum_actual": sum_actual,
+                "entries": entry_count,
+                "channels": len(ch_list),
+                "var_plan_vs_actual": sum_actual - sum_planned,
+                "var_budget_vs_planned": sum_planned - plan_budget,
+                "flags": {
+                    "no_actual": no_actual,
+                    "no_confirmed": no_confirmed,
+                    "no_jira": no_jira,
+                    "no_invoice": no_invoice,
+                },
+            })
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ── CAMPAIGNS (cross-country activity view) ──────────────────
+@app.route("/api/campaigns")
+@require_login
+@require_admin
+def api_campaigns():
+    """
+    Groups entries by activity_name across all countries.
+    Returns campaign-level rollups with per-country breakdown.
+    """
+    try:
+        entries = get_records_cached(TAB_ENTRIES)
+        q_filter = request.args.get("quarter", "")
+
+        if q_filter:
+            entries = [e for e in entries if e.get("quarter") == q_filter]
+
+        # Group by activity_name (campaign)
+        from collections import defaultdict
+        campaigns = defaultdict(lambda: {"countries": defaultdict(lambda: {
+            "planned":0,"confirmed":0,"actual":0,"entries":0,"channel":"",
+        })})
+
+        for e in entries:
+            act_name = e.get("activity_name") or e.get("description") or "(no campaign)"
+            co = e["country"]
+            c = campaigns[act_name]["countries"][co]
+            c["planned"]   += float(e.get("planned")   or 0)
+            c["confirmed"] += float(e.get("confirmed") or 0)
+            c["actual"]    += float(e.get("actual")    or 0)
+            c["entries"]   += 1
+            if not c["channel"]:
+                c["channel"] = e.get("channel_name", "")
+
+        result = []
+        for name, data in campaigns.items():
+            countries = []
+            tot_pln = tot_con = tot_act = tot_ent = 0
+            for co, vals in sorted(data["countries"].items()):
+                countries.append({"country":co, **vals})
+                tot_pln += vals["planned"]
+                tot_con += vals["confirmed"]
+                tot_act += vals["actual"]
+                tot_ent += vals["entries"]
+            result.append({
+                "campaign": name,
+                "countries": countries,
+                "total_planned": tot_pln,
+                "total_confirmed": tot_con,
+                "total_actual": tot_act,
+                "total_entries": tot_ent,
+                "market_count": len(countries),
+                "variance": tot_act - tot_pln,
+            })
+
+        # Sort by total planned descending
+        result.sort(key=lambda x: x["total_planned"], reverse=True)
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 # ── CSV EXPORT ────────────────────────────────────────────────
 @app.route("/api/export")
