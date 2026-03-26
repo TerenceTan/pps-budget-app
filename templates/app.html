@@ -286,20 +286,18 @@ function initNav(){
   g('nav').innerHTML=`
     <button class="nav-btn active" id="nav-dash" onclick="sv('dashboard')">&#x1F4CA; Dashboard</button>
     ${IS_ADMIN?`<button class="nav-btn" id="nav-recon" onclick="sv('recon')">&#x2696; Reconciliation</button>
-    <button class="nav-btn" id="nav-camp" onclick="sv('campaigns')">&#x1F30F; Campaigns</button>
     <button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Budget Config</button>`:''}`;
 }
 function sv(v){
   view=v;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  const map={dashboard:'nav-dash',config:'nav-cfg',recon:'nav-recon',campaigns:'nav-camp'};
+  const map={dashboard:'nav-dash',config:'nav-cfg',recon:'nav-recon'};
   g(map[v])?.classList.add('active');
   render();
 }
 function render(){
   if(view==='dashboard') renderDash();
   else if(view==='recon') renderRecon();
-  else if(view==='campaigns') renderCamp();
   else renderCfg();
 }
 
@@ -590,6 +588,10 @@ function openEM(entryId, chanId, actId){
   approveState = e?.approved||false;
   existInvNames = [...(e?.invoice_names||[])];
 
+  // Load vendors list (async but non-blocking — form renders immediately)
+  if(!window._vendorList) window._vendorList=[];
+  api('/api/vendors').then(v=>{window._vendorList=v;}).catch(()=>{});
+
   g('em-ttl').textContent = e ? 'Edit Line Item' : 'Add Line Item';
   const hasChannels = budgetData.channels.length>0;
 
@@ -609,18 +611,21 @@ function openEM(entryId, chanId, actId){
       : '<span class="err-msg">Required</span>'}
   </div>`;
 
-  // Activity selector — always a dropdown
+  // Activity selector — required when activities exist under the channel
   const chObj = budgetData.channels.find(c=>c.id===defCh);
   const acts  = chObj?.activities||[];
+  const autoSelectAct = acts.length===1 && !defAct ? acts[0].id : defAct;
+  const actRequired = acts.length > 0;
   const actOptions = acts.length > 0
-    ? acts.map(a=>`<option value="${a.id}" ${a.id===defAct?'selected':''}>${esc(a.name)}</option>`).join('')
+    ? acts.map(a=>`<option value="${a.id}" ${a.id===autoSelectAct?'selected':''}>${esc(a.name)}</option>`).join('')
     : '';
   const actField = `<div class="field" id="fg-act">
-    <label>Activity <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span></label>
+    <label>Activity${actRequired?'<span class="req">*</span>':' <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span>'}</label>
     <select id="m-act" ${acts.length===0?'disabled':''}>
-      <option value="">${acts.length===0?'— select channel first —':'No activity / general'}</option>
+      <option value="">${acts.length===0?'— select channel first —':(actRequired?'Select activity...':'No activity / general')}</option>
       ${actOptions}
     </select>
+    ${actRequired?'<span class="err-msg">Select an activity</span>':''}
   </div>`;
 
   const canApp = approveState||!!(e?.jira);
@@ -661,7 +666,18 @@ function openEM(entryId, chanId, actId){
       <div class="field"><label>JIRA Task</label>
         <input type="text" id="m-jira" value="${esc(e?.jira||'')}" placeholder="e.g. MKT-1234" oninput="onJiraInput()"></div>
       <div class="field"><label>Vendor<span class="req">*</span></label>
-        <input type="text" id="m-ven" value="${esc(e?.vendor||'')}" placeholder="e.g. Google, Meta..."><span class="err-msg">Required</span></div>
+        <select id="m-ven" onchange="if(this.value==='__new__'){this.style.display='none';g('m-ven-new-wrap').style.display='flex';}">
+          <option value="">Select vendor...</option>
+          ${(window._vendorList||[]).map(v=>`<option value="${esc(v.name)}" ${e?.vendor===v.name?'selected':''}>${esc(v.name)}${v.country!=='GLOBAL'?' ('+v.country+')':''}</option>`).join('')}
+          ${e?.vendor&&!(window._vendorList||[]).find(v=>v.name===e.vendor)?`<option value="${esc(e.vendor)}" selected>${esc(e.vendor)}</option>`:''}
+          <option value="__new__">+ Add new vendor...</option>
+        </select>
+        <div id="m-ven-new-wrap" style="display:none;gap:6px;margin-top:4px">
+          <input type="text" id="m-ven-new" placeholder="New vendor name..." style="flex:1">
+          <button type="button" class="btn btn-p btn-xs" onclick="addNewVendorInline()">Add</button>
+          <button type="button" class="btn btn-g btn-xs" onclick="g('m-ven-new-wrap').style.display='none';g('m-ven').style.display='';g('m-ven').value='';">Cancel</button>
+        </div>
+        <span class="err-msg">Required</span></div>
     </div>
     <div class="field" style="margin-bottom:12px"><label>Notes / Comments</label>
       <textarea id="m-notes" placeholder="Adjustments, context...">${esc(e?.notes||'')}</textarea></div>
@@ -699,9 +715,15 @@ function onChChange(sel){
   const actSel = g('m-act');
   if(actSel){
     const acts = ch?.activities||[];
-    actSel.innerHTML = `<option value="">${acts.length===0?'No activities yet':'No activity / general'}</option>`
+    const hasActs = acts.length>0;
+    actSel.innerHTML = `<option value="">${!hasActs?'No activities yet':(hasActs?'Select activity...':'No activity / general')}</option>`
       + acts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
     actSel.disabled = false;
+    // Auto-select if only one activity
+    if(acts.length===1) actSel.value=acts[0].id;
+    // Update label
+    const lbl=actSel.closest('.field')?.querySelector('label');
+    if(lbl) lbl.innerHTML=hasActs?'Activity<span class="req">*</span>':'Activity <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span>';
   }
   if(ch) applyMapping(ch.name);
 }
@@ -729,6 +751,20 @@ function handleInv(inp){
   });inp.value='';
 }
 function rmPInv(i){pendingInvs.splice(i,1);g(`pinv-${i}`)?.remove();}
+function addNewVendorInline(){
+  const name=g('m-ven-new')?.value?.trim();
+  if(!name){toast('Enter a vendor name','err');return;}
+  api('/api/vendors',{method:'POST',body:JSON.stringify({name})})
+    .then(v=>{
+      window._vendorList=(window._vendorList||[]).concat(v);
+      const sel=g('m-ven');
+      const opt=document.createElement('option');opt.value=v.name;opt.textContent=v.name;opt.selected=true;
+      sel.insertBefore(opt,sel.querySelector('option[value="__new__"]'));
+      sel.style.display='';g('m-ven-new-wrap').style.display='none';g('m-ven-new').value='';
+      toast('Vendor added ✓','ok');
+    })
+    .catch(e=>toast(e.message||'Failed to add vendor','err'));
+}
 function closeEM(){g('ov-entry').classList.remove('open');}
 
 async function saveEntry(){
@@ -737,8 +773,11 @@ async function saveEntry(){
   // Only require channel if channels exist and select is not disabled
   const chEl = g('m-ch');
   if(chEl && !chEl.disabled && budgetData.channels.length>0) req.ch='m-ch';
+  // Require activity if activities exist for the selected channel
+  const selCh = chEl?.value ? budgetData.channels.find(c=>c.id===chEl.value) : null;
+  if(selCh && selCh.activities && selCh.activities.length>0) req.act='m-act';
   let ok=true;
-  Object.values(req).forEach(id=>{const el=g(id),p=el?.closest('.field');if(!el?.value?.trim()){p?.classList.add('has-err');ok=false;}else p?.classList.remove('has-err');});
+  Object.values(req).forEach(id=>{const el=g(id),p=el?.closest('.field');if(!el?.value?.trim()||el?.value==='__new__'){p?.classList.add('has-err');ok=false;}else p?.classList.remove('has-err');});
   if(!ok){toast('Fill in all required fields','err');return;}
 
   let channelId='',channelName='',activityId='',activityName='';
@@ -765,30 +804,35 @@ async function saveEntry(){
     planned:parseFloat(gv('m-pln'))||0,
     confirmed:parseFloat(gv('m-con'))||0,
     actual:parseFloat(gv('m-act2'))||0,
-    jira:gv('m-jira'), vendor:gv('m-ven'), notes:g('m-notes')?.value?.trim()||'',
+    jira:gv('m-jira'), vendor:(gv('m-ven')==='__new__'?gv('m-ven-new'):gv('m-ven')), notes:g('m-notes')?.value?.trim()||'',
     approved:approveState,
     invoice_names:[...existInvNames,...pendingInvs.map(i=>i.name)],
     invoice_data:[...pendingInvs.map(i=>i.dataUrl)],
   };
   try{
     if(editEntryId){
-      // Optimistic update local state immediately
+      // Optimistic update for edits (entry already exists)
       const idx = entries.findIndex(e=>e.id===editEntryId);
       if(idx>=0) entries[idx] = {...entries[idx], ...payload, approved:approveState, invoice_names:payload.invoice_names};
       _cache.entries = entries;
       rerender();
       closeEM(); toast('Entry updated ✓','ok');
-      api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)}).catch(()=>toast('Sync error — refresh to verify','err'));
+      api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)})
+        .catch(e=>{toast('Sync error: '+(e.message||'check Flask terminal'),'err');});
     } else {
-      // Optimistic add
-      const tmpId = 'tmp_'+Date.now();
-      entries.push({...payload, id:tmpId, entered_by:USER, updated_at:new Date().toISOString(), invoice_names:payload.invoice_names});
-      _cache.entries = entries;
-      rerender();
-      closeEM(); toast('Entry added ✓','ok');
-      api('/api/entries',{method:'POST',body:JSON.stringify(payload)})
-        .then(d=>{ const i=entries.findIndex(e=>e.id===tmpId); if(i>=0) entries[i].id=d.id; })
-        .catch(()=>{ entries=entries.filter(e=>e.id!==tmpId); rerender(); toast('Save failed — please retry','err'); });
+      // Wait for server confirmation on new entries — don't lose data
+      const saveBtn = g('em-foot')?.querySelector('.btn-p');
+      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Saving...';}
+      try{
+        const d = await api('/api/entries',{method:'POST',body:JSON.stringify(payload)});
+        entries.push({...payload, id:d.id, entered_by:USER, updated_at:new Date().toISOString(), invoice_names:payload.invoice_names});
+        _cache.entries = entries;
+        rerender();
+        closeEM(); toast('Entry saved ✓','ok');
+      }catch(e){
+        if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save Entry';}
+        toast('Save failed: '+(e.message||'unknown error'),'err');
+      }
     }
   }catch(e){toast(e.message,'err');}
 }
@@ -953,6 +997,7 @@ async function renderCfg(){
     g('page').innerHTML = buildCfg(mappingRows);
     setMapSelects(mappingRows);
     loadBudgetOverview();
+    loadVendorList();
   }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
 }
 
@@ -1197,6 +1242,40 @@ function buildCfg(mappingRows){
       </table>
     </div>
     <div style="font-size:11px;color:var(--t3);margin-top:8px">&#x2139; Longest keyword match wins. Case-insensitive. Only fills empty fields — existing values are not overwritten.</div>
+  </div>
+
+  <!-- VENDORS -->
+  <div class="card" style="padding:18px;margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">Vendor Directory</div>
+        <div style="font-size:12px;color:var(--t3);margin-top:3px">Global vendors appear for all markets. Market-specific vendors only appear for that market's users.</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Import Vendors (CSV)
+          <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importVendorFile(this)">
+        </label>
+        <button class="btn btn-p btn-sm" onclick="openAddVendor()">+ Add Vendor</button>
+      </div>
+    </div>
+    <div id="vendor-add-form" style="display:none;margin-bottom:10px">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:160px"><label>Vendor Name</label><input type="text" id="v-name" placeholder="e.g. Google Ads, Meta..."></div>
+        <div class="field" style="min-width:120px"><label>Scope</label>
+          <select id="v-scope"><option value="GLOBAL">Global (all markets)</option>${MARKETS.map(m=>`<option value="${m}">${m} only</option>`).join('')}</select></div>
+        <button class="btn btn-p btn-sm" onclick="saveNewVendor()">Save</button>
+        <button class="btn btn-g btn-sm" onclick="g('vendor-add-form').style.display='none'">Cancel</button>
+      </div>
+    </div>
+    <div id="vendor-import-result" style="margin-bottom:8px"></div>
+    <div id="vendor-list" style="font-size:12px;color:var(--t3)">Loading vendors...</div>
+    <div style="margin-top:8px;font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
+      <span style="color:var(--t3)">CSV format: Vendor Name, Country (optional)</span><br>
+      <span style="color:var(--t2)">Google Ads, GLOBAL</span><br>
+      <span style="color:var(--t2)">Baidu, CN</span><br>
+      <span style="color:var(--t2)">LINE Ads, TH</span><br>
+      <span style="color:var(--t3);font-size:10px">&#x2022; Omit country for global vendors &nbsp;|&nbsp; Duplicates are skipped</span>
+    </div>
   </div>`;
 }
 
@@ -1490,144 +1569,257 @@ function setMapSelects(rows){
   });
 }
 
-// ── RECONCILIATION VIEW ───────────────────────────────────────
+// ── VENDOR MANAGEMENT ─────────────────────────────────────────
+async function loadVendorList(){
+  const el=g('vendor-list');
+  if(!el) return;
+  try{
+    const vendors=await api('/api/vendors');
+    window._vendorList=vendors;
+    if(!vendors.length){
+      el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t3)">No vendors yet. Add one above or import from CSV.</div>';
+      return;
+    }
+    // Group by scope
+    const global=vendors.filter(v=>v.country==='GLOBAL');
+    const local=vendors.filter(v=>v.country!=='GLOBAL');
+    const byMkt={};
+    local.forEach(v=>{if(!byMkt[v.country])byMkt[v.country]=[];byMkt[v.country].push(v);});
+
+    let html='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+    global.forEach(v=>{
+      html+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--s2);border:1px solid var(--b);border-radius:20px;font-size:12px">
+        ${esc(v.name)}
+        <button onclick="delVendor('${v.id}')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:11px;padding:0 2px;line-height:1" title="Delete">&#x2715;</button>
+      </span>`;
+    });
+    html+='</div>';
+
+    if(Object.keys(byMkt).length>0){
+      html+='<div style="margin-top:6px">';
+      for(const [mkt,vlist] of Object.entries(byMkt).sort()){
+        html+=`<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em">${mkt}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">`;
+        vlist.forEach(v=>{
+          html+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--acb);border:1px solid var(--acbr);border-radius:20px;font-size:11px;color:var(--ac)">
+            ${esc(v.name)}
+            <button onclick="delVendor('${v.id}')" style="background:none;border:none;cursor:pointer;color:var(--ac);font-size:10px;padding:0 2px;line-height:1;opacity:.6" title="Delete">&#x2715;</button>
+          </span>`;
+        });
+        html+='</div></div>';
+      }
+      html+='</div>';
+    }
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--t3)">Could not load vendors.</div>`;
+  }
+}
+
+function openAddVendor(){
+  g('vendor-add-form').style.display='block';
+  setTimeout(()=>g('v-name')?.focus(),50);
+}
+
+async function saveNewVendor(){
+  const name=g('v-name')?.value?.trim();
+  const scope=g('v-scope')?.value||'GLOBAL';
+  if(!name){toast('Enter a vendor name','err');return;}
+  try{
+    await api('/api/vendors',{method:'POST',body:JSON.stringify({name,country:scope})});
+    g('v-name').value='';
+    g('vendor-add-form').style.display='none';
+    toast('Vendor added ✓','ok');
+    loadVendorList();
+  }catch(e){toast(e.message||'Failed','err');}
+}
+
+async function delVendor(id){
+  if(!confirm('Delete this vendor?')) return;
+  try{
+    await api(`/api/vendors/${id}`,{method:'DELETE'});
+    toast('Vendor deleted','info');
+    loadVendorList();
+  }catch(e){toast(e.message||'Failed','err');}
+}
+
+function importVendorFile(inp){
+  const file=inp.files[0]; if(!file){return;} inp.value='';
+  const fd=new FormData(); fd.append('file',file);
+  const res=g('vendor-import-result');
+  res.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
+    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing...</div>`;
+  fetch('/api/vendors/import',{method:'POST',body:fd})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){toast(d.error,'err');res.innerHTML=`<div style="padding:8px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${esc(d.error)}</div>`;return;}
+      const hasSaved=d.saved>0;
+      let html=`<div style="border:1px solid ${hasSaved?'var(--subr)':'var(--wabr)'};border-radius:var(--r);overflow:hidden">
+        <div style="padding:9px 14px;background:${hasSaved?'var(--sub)':'var(--wab)'};display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600;color:${hasSaved?'var(--su)':'var(--wa)'}">${hasSaved?'&#x2713; Imported '+d.saved+' vendor'+(d.saved===1?'':'s'):'No new vendors'}${d.skipped>0?' · '+d.skipped+' skipped (duplicates)':''}</span>
+          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
+        </div>`;
+      if(d.rows&&d.rows.length>0){
+        html+=`<div style="padding:8px 14px;display:flex;flex-wrap:wrap;gap:4px">${d.rows.map(r=>`<span style="padding:3px 8px;background:var(--s2);border-radius:20px;font-size:11px">${esc(r.name)} <span style="color:var(--t3)">${r.country}</span></span>`).join('')}</div>`;
+      }
+      html+='</div>';
+      res.innerHTML=html;
+      if(hasSaved) loadVendorList();
+    })
+    .catch(e=>{toast('Upload failed','err');res.innerHTML='';});
+}
+
+// ── RECONCILIATION VIEW (Quarter → Country → Channel → Activity → Items) ──
 async function renderRecon(){
   g('page').innerHTML='<div class="spinner"></div>';
   try{
     const tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="font-size:16px;font-weight:600">&#x2696; Quarter Reconciliation</div>
+        <div style="font-size:16px;font-weight:600">&#x2696; Reconciliation</div>
         <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderRecon()">${q}</button>`).join('')}</div>
       </div>
-      <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export All</a>
+      <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export</a>
     </div>`;
 
     const data = await api(`/api/reconciliation/${quarter}`);
     if(!data.length){
-      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No budget data for ${quarter}. Configure budgets first.</div>`;
+      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No data for ${quarter}.</div>`;
       return;
     }
 
-    // Summary totals
+    // Summary
     const totBud=data.reduce((s,r)=>s+r.plan_budget,0);
     const totPln=data.reduce((s,r)=>s+r.sum_planned,0);
     const totCon=data.reduce((s,r)=>s+r.sum_confirmed,0);
     const totAct=data.reduce((s,r)=>s+r.sum_actual,0);
     const totVar=totAct-totPln;
-    const totFlags=data.reduce((s,r)=>s+r.flags.no_actual+r.flags.no_jira+r.flags.no_invoice,0);
     const varClr=totVar===0?'var(--su)':totVar>0?'var(--da)':'var(--su)';
+    const totFlags=data.reduce((s,r)=>s+r.flags.no_actual+r.flags.no_jira+r.flags.no_invoice,0);
 
-    let stats=`<div class="stats-row" style="margin-bottom:16px">
-      <div class="stat"><div class="stat-l">Quarter Budget</div><div class="stat-v">$${fmt(totBud)}</div></div>
-      <div class="stat"><div class="stat-l">Total Planned</div><div class="stat-v" style="color:var(--go)">$${fmt(totPln)}</div></div>
-      <div class="stat"><div class="stat-l">Total Confirmed</div><div class="stat-v" style="color:var(--in)">$${fmt(totCon)}</div></div>
-      <div class="stat"><div class="stat-l">Total Actual</div><div class="stat-v" style="color:var(--su)">$${fmt(totAct)}</div></div>
-      <div class="stat"><div class="stat-l">Variance (A-P)</div><div class="stat-v" style="color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</div></div>
-      <div class="stat"><div class="stat-l">&#x26A0; Open Flags</div><div class="stat-v" style="color:${totFlags>0?'var(--wa)':'var(--su)'}">${totFlags}</div></div>
+    let stats=`<div class="stats-row" style="margin-bottom:14px">
+      <div class="stat"><div class="stat-l">${quarter} Budget</div><div class="stat-v">$${fmt(totBud)}</div></div>
+      <div class="stat"><div class="stat-l">Planned</div><div class="stat-v" style="color:var(--go)">$${fmt(totPln)}</div></div>
+      <div class="stat"><div class="stat-l">Confirmed</div><div class="stat-v" style="color:var(--in)">$${fmt(totCon)}</div></div>
+      <div class="stat"><div class="stat-l">Actual</div><div class="stat-v" style="color:var(--su)">$${fmt(totAct)}</div></div>
+      <div class="stat"><div class="stat-l">Variance</div><div class="stat-v" style="color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</div></div>
+      <div class="stat"><div class="stat-l">&#x26A0; Flags</div><div class="stat-v" style="color:${totFlags?'var(--wa)':'var(--su)'}">${totFlags}</div></div>
     </div>`;
+
+    // Expandable country cards
+    let cards=data.map(r=>{
+      const v=r.var_plan_vs_actual;
+      const vc=v===0?'var(--su)':v>0?'var(--da)':'var(--su)';
+      const fl=r.flags;
+      const flags=[];
+      if(fl.no_actual>0) flags.push(`<span class="badge b-amber">${fl.no_actual} no actual</span>`);
+      if(fl.no_jira>0) flags.push(`<span class="badge b-amber">${fl.no_jira} no JIRA</span>`);
+      if(fl.no_invoice>0) flags.push(`<span class="badge b-red">${fl.no_invoice} no invoice</span>`);
+
+      // Channel rows (expandable)
+      let chHtml='';
+      (r.channels_data||[]).forEach(ch=>{
+        const chVar=ch.actual-ch.planned;
+        const chVc=chVar===0?'var(--t3)':chVar>0?'var(--da)':'var(--su)';
+
+        // Activities within channel
+        let actHtml='';
+        (ch.activities||[]).forEach(act=>{
+          const aVar=act.actual-act.planned;
+          const aVc=aVar===0?'var(--t3)':aVar>0?'var(--da)':'var(--su)';
+          // Line items
+          const itemRows=act.items.map(it=>{
+            const iv=it.actual-it.planned;
+            const ivc=iv===0?'var(--t3)':iv>0?'var(--da)':'var(--su)';
+            return `<tr>
+              <td style="padding-left:56px;font-size:11px"><span style="color:var(--t3)">${mLbl(it.month)}</span> ${esc(it.description||'')}</td>
+              <td style="font-size:11px;color:var(--t2)">${esc(it.vendor||'—')}</td>
+              <td style="font-size:10px">${it.jira?`<span class="mono" style="color:var(--in)">${esc(it.jira)}</span>`:''}${it.approved?' <span class="badge b-green" style="font-size:9px">&#x2713;</span>':''}</td>
+              <td class="mono" style="text-align:right;color:var(--go);font-size:11px">$${fmt(it.planned)}</td>
+              <td class="mono" style="text-align:right;color:var(--in);font-size:11px">$${fmt(it.confirmed)}</td>
+              <td class="mono" style="text-align:right;color:var(--su);font-size:11px">$${fmt(it.actual)}</td>
+              <td class="mono" style="text-align:right;color:${ivc};font-size:11px">${iv!==0?(iv>0?'+':'')+('$'+fmt(iv)):'—'}</td>
+              <td></td>
+            </tr>`;
+          }).join('');
+
+          actHtml+=`<tr class="rc-act rc-act-${ch.id}" style="display:none;cursor:pointer;background:var(--s2)" onclick="document.querySelectorAll('.rc-item-${act.id}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
+            <td style="padding-left:40px;font-weight:500;font-size:12px">&#x2514; ${esc(act.name)} <span style="font-size:10px;color:var(--t3)">&#x25BC;</span></td>
+            <td></td>
+            <td><span class="badge b-gray" style="font-size:10px">${act.entries}</span></td>
+            <td class="mono" style="text-align:right;color:var(--go);font-size:12px">$${fmt(act.planned)}</td>
+            <td class="mono" style="text-align:right;color:var(--in);font-size:12px">$${fmt(act.confirmed)}</td>
+            <td class="mono" style="text-align:right;color:var(--su);font-size:12px">$${fmt(act.actual)}</td>
+            <td class="mono" style="text-align:right;color:${aVc};font-size:12px">${aVar!==0?(aVar>0?'+':'')+('$'+fmt(aVar)):'—'}</td>
+            <td style="text-align:center;font-size:11px">${act.entries}</td>
+          </tr>${itemRows.replace(/class=""/g,'').split('</tr>').map((tr,i)=>tr?tr.replace('<tr','<tr class="rc-item-'+act.id+'" style="display:none"'):'').join('</tr>')}`;
+        });
+
+        // Unassigned items
+        let unassHtml='';
+        if(ch.unassigned&&ch.unassigned.length>0){
+          unassHtml=ch.unassigned.map(it=>{
+            const iv=it.actual-it.planned;
+            const ivc=iv===0?'var(--t3)':iv>0?'var(--da)':'var(--su)';
+            return `<tr class="rc-act rc-act-${ch.id}" style="display:none">
+              <td style="padding-left:40px;font-size:11px;font-style:italic"><span style="color:var(--t3)">${mLbl(it.month)}</span> ${esc(it.description||'—')}</td>
+              <td style="font-size:11px;color:var(--t2)">${esc(it.vendor||'—')}</td>
+              <td style="font-size:10px">${it.jira?`<span class="mono" style="color:var(--in)">${esc(it.jira)}</span>`:''}</td>
+              <td class="mono" style="text-align:right;color:var(--go);font-size:11px">$${fmt(it.planned)}</td>
+              <td class="mono" style="text-align:right;color:var(--in);font-size:11px">$${fmt(it.confirmed)}</td>
+              <td class="mono" style="text-align:right;color:var(--su);font-size:11px">$${fmt(it.actual)}</td>
+              <td class="mono" style="text-align:right;color:${ivc};font-size:11px">${iv!==0?(iv>0?'+':'')+('$'+fmt(iv)):'—'}</td>
+              <td></td>
+            </tr>`;
+          }).join('');
+        }
+
+        chHtml+=`<tr class="rc-ch rc-ch-${r.country}" style="display:none;cursor:pointer;background:var(--s2)" onclick="document.querySelectorAll('.rc-act-${ch.id}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
+          <td style="padding-left:24px;font-weight:500;font-size:12.5px">${esc(ch.name)} <span style="font-size:10px;color:var(--t3);font-weight:400">&#x25BC;</span></td>
+          <td class="mono" style="text-align:right;font-size:11px;color:var(--ac)">$${fmt(ch.budget)}</td>
+          <td><span class="badge b-gray" style="font-size:10px">${ch.entries}</span></td>
+          <td class="mono" style="text-align:right;color:var(--go)">$${fmt(ch.planned)}</td>
+          <td class="mono" style="text-align:right;color:var(--in)">$${fmt(ch.confirmed)}</td>
+          <td class="mono" style="text-align:right;color:var(--su)">$${fmt(ch.actual)}</td>
+          <td class="mono" style="text-align:right;color:${chVc}">${chVar!==0?(chVar>0?'+':'')+('$'+fmt(chVar)):'—'}</td>
+          <td style="text-align:center">${ch.entries}</td>
+        </tr>${actHtml}${unassHtml}`;
+      });
+
+      return `<tr style="cursor:pointer" onclick="document.querySelectorAll('.rc-ch-${r.country}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
+        <td style="font-weight:600">${esc(r.country)} <span style="font-size:10px;color:var(--t3);font-weight:400">&#x25BC;</span></td>
+        <td class="mono" style="text-align:right">$${fmt(r.plan_budget)}</td>
+        <td style="display:flex;gap:3px;flex-wrap:wrap">${flags.join('')||'<span class="badge b-green">&#x2713;</span>'}</td>
+        <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.sum_planned)}</td>
+        <td class="mono" style="text-align:right;color:var(--in)">$${fmt(r.sum_confirmed)}</td>
+        <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.sum_actual)}</td>
+        <td class="mono" style="text-align:right;color:${vc}">${v>0?'+':''}$${fmt(v)}</td>
+        <td style="text-align:center">${r.entries}</td>
+      </tr>${chHtml}`;
+    }).join('');
 
     let tbl=`<div class="card" style="overflow:hidden">
       <div class="tbl-wrap"><table>
         <thead><tr>
-          <th>Market</th><th style="text-align:right">Budget</th><th style="text-align:right">Planned</th>
-          <th style="text-align:right">Confirmed</th><th style="text-align:right">Actual</th>
-          <th style="text-align:right">Variance</th><th style="text-align:center">Entries</th>
-          <th>Flags</th>
+          <th style="width:28%">Market / Channel / Activity</th><th style="text-align:right">Budget</th><th>Status</th>
+          <th style="text-align:right">Planned</th><th style="text-align:right">Confirmed</th>
+          <th style="text-align:right">Actual</th><th style="text-align:right">Variance</th>
+          <th style="text-align:center">Items</th>
         </tr></thead>
-        <tbody>${data.map(r=>{
-          const v=r.var_plan_vs_actual;
-          const vc=v===0?'var(--su)':v>0?'var(--da)':'var(--su)';
-          const flags=[];
-          if(r.flags.no_actual>0) flags.push(`<span class="badge b-amber" title="${r.flags.no_actual} entries without actuals">${r.flags.no_actual} no actual</span>`);
-          if(r.flags.no_jira>0) flags.push(`<span class="badge b-amber" title="${r.flags.no_jira} entries without JIRA">${r.flags.no_jira} no JIRA</span>`);
-          if(r.flags.no_invoice>0) flags.push(`<span class="badge b-red" title="${r.flags.no_invoice} paid entries without invoices">${r.flags.no_invoice} no invoice</span>`);
-          return `<tr style="cursor:pointer" onclick="country='${r.country}';sv('dashboard')">
-            <td style="font-weight:600">${esc(r.country)}</td>
-            <td class="mono" style="text-align:right">$${fmt(r.plan_budget)}</td>
-            <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.sum_planned)}</td>
-            <td class="mono" style="text-align:right;color:var(--in)">$${fmt(r.sum_confirmed)}</td>
-            <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.sum_actual)}</td>
-            <td class="mono" style="text-align:right;color:${vc}">${v>0?'+':''}$${fmt(v)}</td>
-            <td style="text-align:center">${r.entries}</td>
-            <td style="display:flex;gap:4px;flex-wrap:wrap">${flags.join('')||'<span class="badge b-green">&#x2713; Clean</span>'}</td>
-          </tr>`;
-        }).join('')}</tbody>
+        <tbody>${cards}</tbody>
         <tfoot><tr>
           <td style="font-weight:600">${quarter} Total</td>
-          <td class="mono" style="text-align:right;font-weight:600">$${fmt(totBud)}</td>
+          <td class="mono" style="text-align:right;font-weight:600">$${fmt(totBud)}</td><td></td>
           <td class="mono" style="text-align:right;font-weight:600;color:var(--go)">$${fmt(totPln)}</td>
           <td class="mono" style="text-align:right;font-weight:600;color:var(--in)">$${fmt(totCon)}</td>
           <td class="mono" style="text-align:right;font-weight:600;color:var(--su)">$${fmt(totAct)}</td>
           <td class="mono" style="text-align:right;font-weight:600;color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</td>
           <td style="text-align:center;font-weight:600">${data.reduce((s,r)=>s+r.entries,0)}</td>
-          <td></td>
         </tr></tfoot>
       </table></div>
     </div>
-    <div style="font-size:11px;color:var(--t3);margin-top:8px">Click any row to view that market's dashboard. Variance = Actual minus Planned. Flags show data quality issues that need attention before month-end close.</div>`;
+    <div style="font-size:11px;color:var(--t3);margin-top:8px">Click a market to expand channels → click a channel to see activities → click an activity to see line items.</div>`;
 
     g('page').innerHTML=tb+stats+tbl;
-  }catch(e){
-    g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
-  }
-}
-
-// ── CAMPAIGNS VIEW ────────────────────────────────────────────
-async function renderCamp(){
-  g('page').innerHTML='<div class="spinner"></div>';
-  try{
-    const tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="font-size:16px;font-weight:600">&#x1F30F; Campaigns — Cross-Country View</div>
-        <div class="qtabs">${['All',...QS].map(q=>`<button class="qtab ${(q==='All'&&!quarter)||(q===quarter)?'active':''}" onclick="${q==='All'?"quarter=''":'quarter=\''+q+'\''};renderCamp()">${q}</button>`).join('')}</div>
-      </div>
-    </div>`;
-
-    const data = await api(`/api/campaigns${quarter?'?quarter='+quarter:''}`);
-    if(!data.length){
-      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No campaign data found${quarter?' for '+quarter:''}. Campaigns are created from Activity names on entries.</div>`;
-      return;
-    }
-
-    let cards=data.map(c=>{
-      const v=c.variance;
-      const vc=v===0?'var(--su)':v>0?'var(--da)':'var(--su)';
-      return `<div class="card" style="margin-bottom:10px;overflow:hidden">
-        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-          <div>
-            <div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px">${esc(c.campaign)}
-              <span class="badge b-blue">${c.market_count} market${c.market_count===1?'':'s'}</span>
-              <span class="badge b-gray">${c.total_entries} entries</span>
-            </div>
-            <div class="mono" style="font-size:11px;color:var(--t3);margin-top:3px">
-              P: $${fmt(c.total_planned)} · C: $${fmt(c.total_confirmed)} · A: $${fmt(c.total_actual)}
-              ${v!==0?` · <span style="color:${vc}">Var: ${v>0?'+':''}$${fmt(v)}</span>`:''}
-            </div>
-          </div>
-          <div class="chev" style="font-size:10px;color:var(--t3)">&#x25BC;</div>
-        </div>
-        <div style="display:none;border-top:1px solid var(--b)">
-          <div class="tbl-wrap"><table>
-            <thead><tr><th>Market</th><th>Channel</th><th style="text-align:right">Planned</th><th style="text-align:right">Confirmed</th><th style="text-align:right">Actual</th><th style="text-align:right">Var</th><th style="text-align:center">Entries</th></tr></thead>
-            <tbody>${c.countries.map(co=>{
-              const cv=(co.actual||0)-(co.planned||0);
-              const ccl=cv===0?'var(--t3)':cv>0?'var(--da)':'var(--su)';
-              return `<tr style="cursor:pointer" onclick="country='${co.country}';sv('dashboard')">
-                <td style="font-weight:500">${esc(co.country)}</td>
-                <td style="color:var(--t2);font-size:12px">${esc(co.channel||'—')}</td>
-                <td class="mono" style="text-align:right;color:var(--go)">$${fmt(co.planned)}</td>
-                <td class="mono" style="text-align:right;color:var(--in)">$${fmt(co.confirmed)}</td>
-                <td class="mono" style="text-align:right;color:var(--su)">$${fmt(co.actual)}</td>
-                <td class="mono" style="text-align:right;color:${ccl}">${cv!==0?(cv>0?'+':'')+('$'+fmt(cv)):'—'}</td>
-                <td style="text-align:center">${co.entries}</td>
-              </tr>`;
-            }).join('')}</tbody>
-          </table></div>
-        </div>
-      </div>`;
-    }).join('');
-
-    g('page').innerHTML=tb+cards;
   }catch(e){
     g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
   }
@@ -1641,6 +1833,8 @@ document.addEventListener('keydown',e=>{
 // ── BOOT ───────────────────────────────────────────────────────
 initNav();
 renderDash();
+// Preload vendors for entry form dropdown
+api('/api/vendors').then(v=>{window._vendorList=v;}).catch(()=>{window._vendorList=[];});
 </script>
 </body>
 </html>

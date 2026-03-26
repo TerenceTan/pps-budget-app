@@ -1,347 +1,257 @@
+"""
+Finance-format XLSX export matching the APAC Marketing FY26 Tracker layout.
+69 columns: A-BQ
+"""
+
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import datetime
+from collections import OrderedDict
 
-# ── COLOURS (matched to original) ────────────────────────────
-C_DARK_GREEN  = "1F4E39"  # title/total rows
-C_MID_GREEN   = "375623"  # section subtotal
-C_LIGHT_GREEN = "E2EFDA"  # budget cells bg
-C_DARK_GREY   = "404040"  # column headers
-C_MID_GREY    = "808080"
-C_LIGHT_GREY  = "F2F2F2"
+# ── COLOURS ──────────────────────────────────────────────────
+C_DARK_GREEN  = "1F4E39"
+C_MID_GREEN   = "375623"
+C_LIGHT_GREEN = "E2EFDA"
+C_DARK_GREY   = "404040"
 C_WHITE       = "FFFFFF"
-C_BLUE_INPUT  = "0070C0"  # hardcoded admin inputs
-C_ORANGE      = "C65911"  # regional totals
-C_LIGHT_ORANGE= "FCE4D6"
-C_AMBER       = "BF8F00"
+C_BLUE_INPUT  = "0070C0"
+C_ORANGE      = "C65911"
 
-MONTHS = [
-    ("Jul-25", datetime(2025,7,31)),  ("Aug-25", datetime(2025,8,31)),
-    ("Sep-25", datetime(2025,9,30)),  ("Oct-25", datetime(2025,10,31)),
-    ("Nov-25", datetime(2025,11,30)), ("Dec-25", datetime(2025,12,31)),
-    ("Jan-26", datetime(2026,1,31)),  ("Feb-26", datetime(2026,2,28)),
-    ("Mar-26", datetime(2026,3,31)),  ("Apr-26", datetime(2026,4,30)),
-    ("May-26", datetime(2026,5,31)),  ("Jun-26", datetime(2026,6,30)),
+MONTH_DATES = [
+    datetime(2025,7,31), datetime(2025,8,31), datetime(2025,9,30),
+    datetime(2025,10,31), datetime(2025,11,30), datetime(2025,12,31),
+    datetime(2026,1,31), datetime(2026,2,28), datetime(2026,3,31),
+    datetime(2026,4,30), datetime(2026,5,31), datetime(2026,6,30),
 ]
+MONTH_KEYS = ["2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+              "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"]
 
-def fill(hex_color):
-    return PatternFill("solid", fgColor=hex_color)
+# Column positions
+COL_ACCOUNT=1; COL_OWNER=2; COL_CATEGORY=3; COL_COUNTRY=4; COL_VENDOR=5; COL_NOTE=6
+COL_FY26_ACT=7; COL_FY26_BUD=8; COL_VAR_CHECK=9
+COL_YTD_BUD=11; COL_YTD_ACT=12; COL_YTD_VAR=13
+COL_CM_BUD=15; COL_CM_ACT=16; COL_CM_VAR=17
+COL_BUD_START=19; COL_ACT_START=32; COL_VAR_START=45; COL_INP_START=58
+TOTAL_COLS=69
+NUM_FMT='#,##0'
+gl=get_column_letter
 
-def font(bold=False, color="000000", size=10, italic=False, name="Calibri"):
-    return Font(name=name, bold=bold, color=color, size=size, italic=italic)
+def _fill(h): return PatternFill("solid",fgColor=h)
+def _font(b=False,c="000000",s=10,i=False): return Font(name="Calibri",bold=b,color=c,size=s,italic=i)
+def _border(c="CCCCCC"):
+    s=Side(style='thin',color=c); return Border(left=s,right=s,top=s,bottom=s)
+def _s(c,bg=None,bold=False,fc="000000",size=10,align="left",wrap=False,nf=None,italic=False):
+    if bg: c.fill=_fill(bg)
+    c.font=_font(bold,fc,size,italic)
+    c.alignment=Alignment(horizontal=align,vertical='center',wrap_text=wrap)
+    if nf: c.number_format=nf
 
-def border(color="AAAAAA"):
-    s = Side(style='thin', color=color)
-    return Border(left=s, right=s, top=s, bottom=s)
 
-def right_border():
-    s = Side(style='medium', color="888888")
-    return Border(right=s)
+def build_finance_export(output_path, entries, channels, budgets, current_month_key="2026-02"):
+    wb=openpyxl.Workbook(); ws=wb.active; ws.title="APAC"
+    ws.sheet_view.showGridLines=False
 
-def style_cell(c, bg=None, bold=False, fc="000000", size=10, 
-               align="left", wrap=False, num_fmt=None, italic=False):
-    if bg:     c.fill = fill(bg)
-    c.font     = font(bold=bold, color=fc, size=size, italic=italic)
-    c.alignment = Alignment(horizontal=align, vertical='center', wrap_text=wrap)
-    if num_fmt: c.number_format = num_fmt
-
-# Column layout:
-# A=1  AP Account       B=2  Budget Owner
-# C=3  Category         D=4  Country
-# E=5  Vendor           F=6  Note/Description
-# G=7  FY26 (Act/Budget) H=8  FY26 Budget (admin input)
-# I=9  Var Check        J-U (10-21) = Jul-25 to Jun-26 monthly budget
-
-COL_ACCOUNT  = 1
-COL_OWNER    = 2
-COL_CAT      = 3
-COL_COUNTRY  = 4
-COL_VENDOR   = 5
-COL_NOTE     = 6
-COL_FY26_ACT = 7
-COL_FY26_BUD = 8
-COL_VAR      = 9
-COL_M_START  = 10  # Jul-25
-COL_M_END    = 21  # Jun-26
-
-def build(output_path, budget_data):
-    """
-    budget_data: list of dicts with keys:
-        account, budget_owner, category, country, vendor, note,
-        fy26_budget (total admin budget),
-        monthly [12 values: Jul-Jun]
-    Rows with country='Total' are section headers (auto-computed).
-    """
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "APAC"
-    ws.sheet_view.showGridLines = False
-
-    # ── COLUMN WIDTHS ─────────────────────────────────────────
-    widths = {1:28, 2:18, 3:32, 4:14, 5:22, 6:32, 7:16, 8:16, 9:12}
-    for col, w in widths.items():
-        ws.column_dimensions[get_column_letter(col)].width = w
+    # Column widths
+    for col,w in {1:30,2:16,3:28,4:14,5:22,6:28,7:16,8:14,9:12}.items():
+        ws.column_dimensions[gl(col)].width=w
     for i in range(12):
-        ws.column_dimensions[get_column_letter(COL_M_START+i)].width = 11
+        for base in [COL_BUD_START,COL_ACT_START,COL_VAR_START,COL_INP_START]:
+            ws.column_dimensions[gl(base+i)].width=12
+    for sp in [10,14,18,31,44,57]:
+        ws.column_dimensions[gl(sp)].width=2
 
-    # ── ROWS 1-3: TITLE ───────────────────────────────────────
-    titles = [
-        "Marketing Expenses Detail— APAC",
-        "Marketing FY26 Budget",
-        "Pepperstone Group Limited",
-    ]
-    for r, t in enumerate(titles, 1):
-        ws.merge_cells(f'A{r}:{get_column_letter(COL_M_END)}{r}')
-        c = ws.cell(r, 1, t)
-        style_cell(c, bg=C_DARK_GREEN if r==1 else None,
-                   bold=True, fc=C_WHITE if r==1 else "000000", size=12 if r==1 else 10)
-        ws.row_dimensions[r].height = 20 if r==1 else 16
+    # Rows 1-3: Title
+    for r,(txt,bg,fc,sz) in enumerate([
+        ("Marketing Expenses Detail— APAC",C_DARK_GREEN,C_WHITE,12),
+        ("Marketing FY26 Tracker",None,"000000",10),
+        ("Pepperstone Group Limited",None,"000000",10)],1):
+        ws.merge_cells(f'A{r}:{gl(TOTAL_COLS)}{r}')
+        _s(ws.cell(r,1,txt),bg=bg,bold=True,fc=fc,size=sz)
 
-    # ── ROW 4: Units label ────────────────────────────────────
-    ws['C4'] = 'AUD $000'; ws['D4'] = 'FY26'
-    style_cell(ws['C4'], bg=C_DARK_GREEN, bold=True, fc=C_WHITE, align='center')
-    style_cell(ws['D4'], bold=True)
-    ws.row_dimensions[4].height = 16
+    # Row 4-5
+    ws['C4']='AUD $000'; _s(ws['C4'],bg=C_DARK_GREEN,bold=True,fc=C_WHITE,align='center')
+    ws['D4']='FY26'
+    cm_idx=MONTH_KEYS.index(current_month_key) if current_month_key in MONTH_KEYS else 7
+    ws['C5']='Current mth'; ws['D5']=MONTH_DATES[cm_idx]; ws['D5'].number_format='MMM-YY'
 
-    # ── ROW 5: Current month marker ───────────────────────────
-    ws['C5'] = 'Current mth'
-    ws['D5'] = datetime(2026, 2, 28)
-    ws['D5'].number_format = 'MMM-YY'
-    ws.row_dimensions[5].height = 14
+    # Row 7: Section headers
+    for col,lbl in [(COL_OWNER,"APAC Total"),(COL_CATEGORY,"APAC")]:
+        _s(ws.cell(7,col,lbl),bg=C_DARK_GREEN,bold=True,fc=C_WHITE)
+    for col,lbl in [(COL_YTD_BUD,"Budget"),(COL_YTD_ACT,"Actual"),(COL_YTD_VAR,"Var"),
+                     (COL_CM_BUD,"Budget"),(COL_CM_ACT,"Actual"),(COL_CM_VAR,"Var")]:
+        _s(ws.cell(7,col,lbl),bg=C_DARK_GREEN,bold=True,fc=C_WHITE,size=9,align='center')
+    for i in range(12):
+        for base,lbl,bg in [(COL_BUD_START,"Budget",C_DARK_GREEN),(COL_ACT_START,"Actual",C_DARK_GREY),
+                             (COL_VAR_START,"Var",C_DARK_GREY),(COL_INP_START,"Actual",C_ORANGE)]:
+            _s(ws.cell(7,base+i,lbl),bg=bg,bold=True,fc=C_WHITE,size=8,align='center')
 
-    # ── ROW 6: Blank separator ────────────────────────────────
-    ws.row_dimensions[6].height = 6
+    # Row 8: Column headers
+    for col,lbl in [(1,"AP- Main Account"),(3,"Category"),(4,"Country"),(5,"Vendor"),
+                     (6,"Note"),(7,"FY26 (ACT/BUDGET)"),(8,"Budget"),(9,"Var Check"),
+                     (11,"YTD"),(12,"YTD"),(13,"YTD")]:
+        c=ws.cell(8,col,lbl); _s(c,bg=C_DARK_GREY,bold=True,fc=C_WHITE,size=9,align='center',wrap=True); c.border=_border()
+    for col in [COL_CM_BUD,COL_CM_ACT]:
+        c=ws.cell(8,col,MONTH_DATES[cm_idx]); c.number_format='MMM-YY'
+        _s(c,bg=C_DARK_GREY,bold=True,fc=C_WHITE,size=9,align='center')
+    for i in range(12):
+        for base,bg in [(COL_BUD_START,C_DARK_GREEN),(COL_ACT_START,C_DARK_GREY),
+                         (COL_VAR_START,C_DARK_GREY),(COL_INP_START,C_ORANGE)]:
+            c=ws.cell(8,base+i,MONTH_DATES[i]); c.number_format='MMM-YY'
+            _s(c,bg=bg,bold=True,fc=C_WHITE,size=8,align='center'); c.border=_border()
 
-    # ── ROW 7: Section grouping labels ───────────────────────
-    ws.merge_cells(f'{get_column_letter(COL_M_START)}7:{get_column_letter(COL_M_END)}7')
-    c7 = ws.cell(7, COL_M_START, "Budget — Monthly (Jul 2025 to Jun 2026)")
-    style_cell(c7, bg=C_DARK_GREEN, bold=True, fc=C_WHITE, align='center')
+    # Group entries by channel/category
+    cats=OrderedDict()
+    for e in entries:
+        cat=e.get("channel_name") or e.get("finance_cat") or "Other"
+        cats.setdefault(cat,[]).append(e)
 
-    for col in [COL_ACCOUNT, COL_OWNER, COL_CAT, COL_COUNTRY, COL_VENDOR, COL_NOTE,
-                COL_FY26_ACT, COL_FY26_BUD, COL_VAR]:
-        style_cell(ws.cell(7, col), bg=C_DARK_GREEN, fc=C_WHITE)
-    ws.row_dimensions[7].height = 18
+    GRAND_ROW=9; current_row=10; cat_total_rows=[]
 
-    # ── ROW 8: COLUMN HEADERS ─────────────────────────────────
-    headers = [
-        (COL_ACCOUNT,  "AP- Main Account"),
-        (COL_OWNER,    "Budget Owner"),
-        (COL_CAT,      "Category"),
-        (COL_COUNTRY,  "Country"),
-        (COL_VENDOR,   "Vendor"),
-        (COL_NOTE,     "Note / Description"),
-        (COL_FY26_ACT, "FY26 (Act/Budget)"),
-        (COL_FY26_BUD, "FY26 Budget"),
-        (COL_VAR,      "Var Check"),
-    ]
-    for col, lbl in headers:
-        c = ws.cell(8, col, lbl)
-        style_cell(c, bg=C_DARK_GREY, bold=True, fc=C_WHITE, size=9, align='center', wrap=True)
-        c.border = border()
-
-    for i, (lbl, _) in enumerate(MONTHS):
-        c = ws.cell(8, COL_M_START+i, lbl)
-        style_cell(c, bg="1C6B4A", bold=True, fc=C_WHITE, size=9, align='center')
-        c.border = border()
-    ws.row_dimensions[8].height = 30
-
-    # ── DATA SECTION ──────────────────────────────────────────
-    # Group by category
-    from collections import defaultdict, OrderedDict
-    cats = OrderedDict()
-    for row in budget_data:
-        cat = row['category']
-        if cat not in cats:
-            cats[cat] = []
-        cats[cat].append(row)
-
-    SECTION_STYLES = {
-        "Performance Marketing":  ("375623", "E8F5E0"),
-        "Affiliate":              ("1A4A72", "E0EBF5"),
-        "Paid Social":            ("7B5E00", "FFF8DC"),
-        "Regional Marketing":     ("6B2C00", "FBE8DC"),
-        "AMF1 Activation":        ("3B1F6B", "EEE8FA"),
-        "Premium":                ("003B4A", "DCF0F5"),
-        "Partner":                ("003B4A", "DCF0F5"),
-        "RAF":                    ("3B3B00", "F5F5DC"),
-        "Mar Tech":               ("404040", "F5F5F5"),
-    }
-
-    current_row = 9
-    cat_total_rows = []
-
-    # Grand total row placeholder (row 9 in original = top summary)
-    # We'll write it first, then insert data
-    GRAND_ROW = 9
-    current_row = 10  # data starts at 10
-
-    # Track where each category's total row and data rows are
-    cat_row_map = {}  # category -> (total_row, [data_rows])
-
-    for cat, rows in cats.items():
-        s_colors = SECTION_STYLES.get(cat, ("404040","F9F9F9"))
-        s_bg, d_bg = s_colors
-
-        total_row = current_row
-        data_start = current_row + 1
-        data_end   = current_row + len(rows)
-        cat_row_map[cat] = (total_row, list(range(data_start, data_end+1)))
+    for cat,cat_entries in cats.items():
+        s_bg,d_bg=C_MID_GREEN,C_LIGHT_GREEN
+        total_row=current_row; data_start=current_row+1; data_end=current_row+len(cat_entries)
         cat_total_rows.append(total_row)
 
-        # Section subtotal header row
-        for col in range(1, COL_M_END+1):
-            style_cell(ws.cell(total_row, col), bg=s_bg, fc=C_WHITE)
+        # Category total row
+        for col in range(1,TOTAL_COLS+1): _s(ws.cell(total_row,col),bg=s_bg,fc=C_WHITE)
+        ws.cell(total_row,COL_CATEGORY,cat); _s(ws.cell(total_row,COL_CATEGORY),bg=s_bg,bold=True,fc=C_WHITE)
+        ws.cell(total_row,COL_COUNTRY,"Total"); _s(ws.cell(total_row,COL_COUNTRY),bg=s_bg,bold=True,fc=C_WHITE)
 
-        ws.cell(total_row, COL_CAT, cat)
-        style_cell(ws.cell(total_row, COL_CAT), bg=s_bg, bold=True, fc=C_WHITE, size=10)
-
-        ws.cell(total_row, COL_COUNTRY, "Total")
-        style_cell(ws.cell(total_row, COL_COUNTRY), bg=s_bg, bold=True, fc=C_WHITE)
-
-        # FY26 sum formula
-        c = ws.cell(total_row, COL_FY26_ACT)
-        c.value = f"=SUM(G{data_start}:G{data_end})"
-        style_cell(c, bg=s_bg, bold=True, fc=C_WHITE, num_fmt='#,##0')
-
-        c2 = ws.cell(total_row, COL_FY26_BUD)
-        c2.value = f"=SUM(H{data_start}:H{data_end})"
-        style_cell(c2, bg=s_bg, bold=True, fc=C_WHITE, num_fmt='#,##0')
-
-        c3 = ws.cell(total_row, COL_VAR)
-        c3.value = f"=G{total_row}-H{total_row}"
-        style_cell(c3, bg=s_bg, bold=True, fc=C_WHITE, num_fmt='#,##0')
+        # Formulas for totals
+        ws.cell(total_row,COL_FY26_ACT).value=f"=SUM({gl(COL_BUD_START)}{total_row}:{gl(COL_BUD_START+11)}{total_row})"
+        ws.cell(total_row,COL_FY26_BUD).value=f"=SUM(H{data_start}:H{data_end})"
+        ws.cell(total_row,COL_VAR_CHECK).value=f"=G{total_row}-H{total_row}"
+        for fc in [COL_FY26_ACT,COL_FY26_BUD,COL_VAR_CHECK]:
+            _s(ws.cell(total_row,fc),bg=s_bg,bold=True,fc=C_WHITE,nf=NUM_FMT)
 
         for i in range(12):
-            col = COL_M_START + i
-            col_l = get_column_letter(col)
-            c = ws.cell(total_row, col)
-            c.value = f"=SUM({col_l}{data_start}:{col_l}{data_end})"
-            style_cell(c, bg=s_bg, bold=True, fc=C_WHITE, num_fmt='#,##0')
-            c.border = border()
+            for base in [COL_BUD_START,COL_ACT_START,COL_INP_START]:
+                cl=gl(base+i); ws.cell(total_row,base+i).value=f"=SUM({cl}{data_start}:{cl}{data_end})"
+                _s(ws.cell(total_row,base+i),bg=s_bg,bold=True,fc=C_WHITE,nf=NUM_FMT)
+            ws.cell(total_row,COL_VAR_START+i).value=f"={gl(COL_BUD_START+i)}{total_row}-{gl(COL_ACT_START+i)}{total_row}"
+            _s(ws.cell(total_row,COL_VAR_START+i),bg=s_bg,bold=True,fc=C_WHITE,nf=NUM_FMT)
 
-        ws.row_dimensions[total_row].height = 18
-        current_row += 1
+        # YTD & CM for total row
+        ws.cell(total_row,COL_YTD_BUD).value=f"=SUM({gl(COL_BUD_START)}{total_row}:{gl(COL_BUD_START+cm_idx)}{total_row})"
+        ws.cell(total_row,COL_YTD_ACT).value=f"=SUM({gl(COL_ACT_START)}{total_row}:{gl(COL_ACT_START+cm_idx)}{total_row})"
+        ws.cell(total_row,COL_YTD_VAR).value=f"={gl(COL_YTD_BUD)}{total_row}-{gl(COL_YTD_ACT)}{total_row}"
+        ws.cell(total_row,COL_CM_BUD).value=f"={gl(COL_BUD_START+cm_idx)}{total_row}"
+        ws.cell(total_row,COL_CM_ACT).value=f"={gl(COL_ACT_START+cm_idx)}{total_row}"
+        ws.cell(total_row,COL_CM_VAR).value=f"={gl(COL_CM_BUD)}{total_row}-{gl(COL_CM_ACT)}{total_row}"
+        for fc in [COL_YTD_BUD,COL_YTD_ACT,COL_YTD_VAR,COL_CM_BUD,COL_CM_ACT,COL_CM_VAR]:
+            _s(ws.cell(total_row,fc),bg=s_bg,bold=True,fc=C_WHITE,nf=NUM_FMT)
+
+        current_row+=1
 
         # Data rows
-        for j, row in enumerate(rows):
-            is_alt = j % 2 == 0
-            row_bg = d_bg if is_alt else C_WHITE
+        for j,entry in enumerate(cat_entries):
+            row_bg=d_bg if j%2==0 else C_WHITE; r=current_row
+            for col in range(1,TOTAL_COLS+1): _s(ws.cell(r,col),bg=row_bg)
 
-            for col in range(1, COL_M_END+1):
-                style_cell(ws.cell(current_row, col), bg=row_bg)
+            # Text
+            ws.cell(r,COL_ACCOUNT,entry.get("bu","")); ws.cell(r,COL_OWNER,entry.get("entered_by",""))
+            ws.cell(r,COL_CATEGORY,cat); ws.cell(r,COL_COUNTRY,entry.get("country",""))
+            ws.cell(r,COL_VENDOR,entry.get("vendor","")); ws.cell(r,COL_NOTE,entry.get("description","") or entry.get("activity_name",""))
+            for col in [COL_ACCOUNT,COL_OWNER,COL_CATEGORY,COL_COUNTRY,COL_VENDOR,COL_NOTE]:
+                _s(ws.cell(r,col),bg=row_bg,size=9)
 
-            ws.cell(current_row, COL_ACCOUNT, row.get('account', ''))
-            ws.cell(current_row, COL_OWNER,   row.get('budget_owner', ''))
-            ws.cell(current_row, COL_CAT,     cat)
-            ws.cell(current_row, COL_COUNTRY, row.get('country', ''))
-            ws.cell(current_row, COL_VENDOR,  row.get('vendor', ''))
-            ws.cell(current_row, COL_NOTE,    row.get('note', ''))
+            # FY26 formulas
+            ws.cell(r,COL_FY26_ACT).value=f"=SUM({gl(COL_BUD_START)}{r}:{gl(COL_BUD_START+11)}{r})"
+            _s(ws.cell(r,COL_FY26_ACT),bg=row_bg,bold=True,fc=C_MID_GREEN,nf=NUM_FMT)
+            ws.cell(r,COL_FY26_BUD,float(entry.get("planned") or 0))
+            _s(ws.cell(r,COL_FY26_BUD),bg=row_bg,fc=C_BLUE_INPUT,nf=NUM_FMT)
+            ws.cell(r,COL_VAR_CHECK).value=f"=G{r}-H{r}"
+            _s(ws.cell(r,COL_VAR_CHECK),bg=row_bg,nf=NUM_FMT)
 
-            for col in [COL_ACCOUNT, COL_OWNER, COL_CAT, COL_COUNTRY, COL_VENDOR, COL_NOTE]:
-                style_cell(ws.cell(current_row, col), bg=row_bg, size=9)
+            # Monthly values
+            month_val=entry.get("month","")
+            planned=float(entry.get("planned") or 0)
+            actual=float(entry.get("actual") or 0)
 
-            # FY26 Act/Budget = sum of monthly
-            gl = get_column_letter
-            c = ws.cell(current_row, COL_FY26_ACT)
-            c.value = f"=SUM({gl(COL_M_START)}{current_row}:{gl(COL_M_END)}{current_row})"
-            style_cell(c, bg=row_bg, bold=True, fc="1C4F3C", num_fmt='#,##0')
+            for i in range(12):
+                is_entry_month=(MONTH_KEYS[i]==month_val)
+                # Budget
+                ws.cell(r,COL_BUD_START+i,planned if is_entry_month else 0)
+                _s(ws.cell(r,COL_BUD_START+i),bg=row_bg,fc=C_BLUE_INPUT,nf=NUM_FMT)
+                ws.cell(r,COL_BUD_START+i).border=_border("DDDDDD")
+                # Actual (GL mirror)
+                ws.cell(r,COL_ACT_START+i,actual if is_entry_month else 0)
+                _s(ws.cell(r,COL_ACT_START+i),bg=row_bg,fc=C_BLUE_INPUT,nf=NUM_FMT)
+                ws.cell(r,COL_ACT_START+i).border=_border("DDDDDD")
+                # Variance formula
+                ws.cell(r,COL_VAR_START+i).value=f"={gl(COL_BUD_START+i)}{r}-{gl(COL_ACT_START+i)}{r}"
+                _s(ws.cell(r,COL_VAR_START+i),bg=row_bg,nf=NUM_FMT)
+                # Input actual (BF-BQ) — the column you fill
+                ws.cell(r,COL_INP_START+i,actual if is_entry_month else 0)
+                _s(ws.cell(r,COL_INP_START+i),bg=row_bg,fc=C_ORANGE,nf=NUM_FMT)
+                ws.cell(r,COL_INP_START+i).border=_border("DDDDDD")
 
-            # FY26 Budget (admin input — blue)
-            c2 = ws.cell(current_row, COL_FY26_BUD)
-            c2.value = row.get('fy26_budget', 0)
-            style_cell(c2, bg=row_bg, fc=C_BLUE_INPUT, num_fmt='#,##0')
+            # YTD
+            ws.cell(r,COL_YTD_BUD).value=f"=SUM({gl(COL_BUD_START)}{r}:{gl(COL_BUD_START+cm_idx)}{r})"
+            ws.cell(r,COL_YTD_ACT).value=f"=SUM({gl(COL_ACT_START)}{r}:{gl(COL_ACT_START+cm_idx)}{r})"
+            ws.cell(r,COL_YTD_VAR).value=f"={gl(COL_YTD_BUD)}{r}-{gl(COL_YTD_ACT)}{r}"
+            ws.cell(r,COL_CM_BUD).value=f"={gl(COL_BUD_START+cm_idx)}{r}"
+            ws.cell(r,COL_CM_ACT).value=f"={gl(COL_ACT_START+cm_idx)}{r}"
+            ws.cell(r,COL_CM_VAR).value=f"={gl(COL_CM_BUD)}{r}-{gl(COL_CM_ACT)}{r}"
+            for fc in [COL_YTD_BUD,COL_YTD_ACT,COL_YTD_VAR,COL_CM_BUD,COL_CM_ACT,COL_CM_VAR]:
+                _s(ws.cell(r,fc),bg=row_bg,nf=NUM_FMT)
 
-            # Var
-            c3 = ws.cell(current_row, COL_VAR)
-            c3.value = f"=G{current_row}-H{current_row}"
-            style_cell(c3, bg=row_bg, num_fmt='#,##0')
+            ws.row_dimensions[r].height=16; current_row+=1
 
-            # Monthly values (blue = admin input)
-            monthly = row.get('monthly', [0]*12)
-            for i, val in enumerate(monthly):
-                col = COL_M_START + i
-                c = ws.cell(current_row, col, val if val else 0)
-                style_cell(c, bg=row_bg, fc=C_BLUE_INPUT, num_fmt='#,##0')
-                c.border = border("DDDDDD")
+    # Grand total (row 9)
+    for col in range(1,TOTAL_COLS+1): _s(ws.cell(GRAND_ROW,col),bg=C_DARK_GREEN)
+    ws.cell(GRAND_ROW,COL_ACCOUNT,"AP- Main account"); _s(ws.cell(GRAND_ROW,COL_ACCOUNT),bg=C_DARK_GREEN,bold=True,fc=C_WHITE,size=9)
+    ws.cell(GRAND_ROW,COL_OWNER,"Budget Owner"); _s(ws.cell(GRAND_ROW,COL_OWNER),bg=C_DARK_GREEN,bold=True,fc=C_WHITE,size=9)
+    ws.cell(GRAND_ROW,COL_CATEGORY,"Total Marketing"); _s(ws.cell(GRAND_ROW,COL_CATEGORY),bg=C_DARK_GREEN,bold=True,fc=C_WHITE)
+    ws.cell(GRAND_ROW,COL_COUNTRY,"Total"); _s(ws.cell(GRAND_ROW,COL_COUNTRY),bg=C_DARK_GREEN,bold=True,fc=C_WHITE)
 
-            ws.row_dimensions[current_row].height = 16
-            current_row += 1
+    if cat_total_rows:
+        for fc in [COL_FY26_ACT,COL_FY26_BUD,COL_VAR_CHECK,COL_YTD_BUD,COL_YTD_ACT,COL_YTD_VAR,COL_CM_BUD,COL_CM_ACT,COL_CM_VAR]:
+            refs="+".join([f"{gl(fc)}{r}" for r in cat_total_rows])
+            ws.cell(GRAND_ROW,fc).value=f"={refs}"
+            _s(ws.cell(GRAND_ROW,fc),bg=C_DARK_GREEN,bold=True,fc=C_WHITE,nf=NUM_FMT)
+        for i in range(12):
+            for base in [COL_BUD_START,COL_ACT_START,COL_VAR_START,COL_INP_START]:
+                col=base+i; refs="+".join([f"{gl(col)}{r}" for r in cat_total_rows])
+                ws.cell(GRAND_ROW,col).value=f"={refs}"
+                _s(ws.cell(GRAND_ROW,col),bg=C_DARK_GREEN,bold=True,fc=C_WHITE,nf=NUM_FMT)
 
-    # ── GRAND TOTAL (row 9) ───────────────────────────────────
-    gt_refs_g = "+".join([f"G{r}" for r in cat_total_rows])
-    gt_refs_h = "+".join([f"H{r}" for r in cat_total_rows])
+    ws.row_dimensions[GRAND_ROW].height=22
+    ws.freeze_panes='G10'
 
-    for col in range(1, COL_M_END+1):
-        style_cell(ws.cell(GRAND_ROW, col), bg=C_DARK_GREEN)
-
-    ws.cell(GRAND_ROW, COL_OWNER, "Budget Owner")
-    style_cell(ws.cell(GRAND_ROW, COL_OWNER), bg=C_DARK_GREEN, bold=True, fc=C_WHITE)
-
-    ws.cell(GRAND_ROW, COL_CAT, "Total Marketing")
-    style_cell(ws.cell(GRAND_ROW, COL_CAT), bg=C_DARK_GREEN, bold=True, fc=C_WHITE)
-
-    ws.cell(GRAND_ROW, COL_COUNTRY, "Total")
-    style_cell(ws.cell(GRAND_ROW, COL_COUNTRY), bg=C_DARK_GREEN, bold=True, fc=C_WHITE)
-
-    c = ws.cell(GRAND_ROW, COL_FY26_ACT)
-    c.value = f"={gt_refs_g}"
-    style_cell(c, bg=C_DARK_GREEN, bold=True, fc=C_WHITE, num_fmt='#,##0')
-
-    c2 = ws.cell(GRAND_ROW, COL_FY26_BUD)
-    c2.value = f"={gt_refs_h}"
-    style_cell(c2, bg=C_DARK_GREEN, bold=True, fc=C_WHITE, num_fmt='#,##0')
-
-    c3 = ws.cell(GRAND_ROW, COL_VAR)
-    c3.value = f"=G{GRAND_ROW}-H{GRAND_ROW}"
-    style_cell(c3, bg=C_DARK_GREEN, bold=True, fc=C_WHITE, num_fmt='#,##0')
-
-    for i in range(12):
-        col = COL_M_START + i
-        col_l = get_column_letter(col)
-        refs = "+".join([f"{col_l}{r}" for r in cat_total_rows])
-        c = ws.cell(GRAND_ROW, col)
-        c.value = f"={refs}"
-        style_cell(c, bg=C_DARK_GREEN, bold=True, fc=C_WHITE, num_fmt='#,##0')
-        c.border = border()
-
-    ws.row_dimensions[GRAND_ROW].height = 22
-
-    # ── FREEZE ────────────────────────────────────────────────
-    ws.freeze_panes = ws.cell(9, COL_FY26_ACT)
-
-    # ── LEGEND / NOTES at bottom ──────────────────────────────
-    note_row = current_row + 2
-    ws.merge_cells(f'A{note_row}:{get_column_letter(COL_M_END)}{note_row}')
-    notes_cell = ws.cell(note_row, 1)
-    notes_cell.value = "Legend:   Blue values = Admin input (budget figures)   |   Green values = Auto-calculated (sum of monthly)   |   Var Check = FY26 Act/Budget minus FY26 Budget input"
-    style_cell(notes_cell, italic=True, fc="666666", size=8)
+    # Legend
+    nr=current_row+2
+    ws.merge_cells(f'A{nr}:{gl(TOTAL_COLS)}{nr}')
+    _s(ws.cell(nr,1,"Legend:  Blue = Budget input  |  Orange (BF-BQ) = Marketing team actual input  |  Black = Formulas  |  Var = Budget minus Actual"),italic=True,fc="666666",size=8)
 
     wb.save(output_path)
-    print(f"Saved: {output_path}")
+    return output_path
+
+
+# Keep old build() for backward compat
+def build(output_path, budget_data):
+    """Legacy wrapper — converts old format to new."""
+    entries = []
+    for row in budget_data:
+        monthly = row.get("monthly", [0]*12)
+        for i, val in enumerate(monthly):
+            if val:
+                entries.append({
+                    "bu": row.get("account",""), "entered_by": row.get("budget_owner",""),
+                    "channel_name": row.get("category",""), "country": row.get("country",""),
+                    "vendor": row.get("vendor",""), "description": row.get("note",""),
+                    "planned": val, "actual": 0, "month": MONTH_KEYS[i] if i < len(MONTH_KEYS) else "",
+                })
+    build_finance_export(output_path, entries, [], [])
+
 
 if __name__ == "__main__":
-    # ── SAMPLE DATA matching APAC sheet structure ─────────────────
     sample = [
-        {"account":"Marketing : Paid Search / YouTube","budget_owner":"APAC Marketing","category":"Performance Marketing","country":"Thailand","vendor":"Google","note":"Google search","fy26_budget":40000,"monthly":[3200,3200,3200,3400,3400,3600,3200,3200,3400,3600,3800,4800]},
-        {"account":"Marketing : Paid Search / YouTube","budget_owner":"APAC Marketing","category":"Performance Marketing","country":"Vietnam","vendor":"Google","note":"Google search","fy26_budget":18000,"monthly":[1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500]},
-        {"account":"Marketing : Paid Search / YouTube","budget_owner":"APAC Marketing","category":"Performance Marketing","country":"Singapore","vendor":"Google","note":"Google search & PMAX","fy26_budget":60000,"monthly":[5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000]},
-        {"account":"Marketing : Paid Search / YouTube","budget_owner":"APAC Marketing","category":"Performance Marketing","country":"Malaysia","vendor":"Google","note":"Google search","fy26_budget":48000,"monthly":[4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000]},
-        {"account":"Microsoft Ireland Operations","budget_owner":"APAC Marketing","category":"Performance Marketing","country":"APAC","vendor":"Bing","note":"Bing search & display","fy26_budget":44000,"monthly":[3500,3500,3500,3700,3700,3700,3700,3700,3700,4000,4000,4200]},
-        {"account":"Marketing : Affiliate","budget_owner":"APAC Marketing","category":"Affiliate","country":"Thailand","vendor":"Affiliate","note":"Thailand CPA & FF","fy26_budget":120000,"monthly":[10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000]},
-        {"account":"Marketing : Affiliate","budget_owner":"APAC Marketing","category":"Affiliate","country":"Vietnam","vendor":"Affiliate","note":"Vietnam CPA","fy26_budget":24000,"monthly":[2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000]},
-        {"account":"Marketing : Affiliate","budget_owner":"APAC Marketing","category":"Affiliate","country":"Singapore","vendor":"Affiliate","note":"Singapore CPA","fy26_budget":12000,"monthly":[1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000]},
-        {"account":"Marketing : Paid Social / YouTube","budget_owner":"APAC Marketing","category":"Paid Social","country":"Thailand","vendor":"Meta","note":"Meta paid social","fy26_budget":36000,"monthly":[3000,3000,3000,3000,3000,3000,3000,3000,3000,3000,3000,3000]},
-        {"account":"Marketing : Paid Social / YouTube","budget_owner":"APAC Marketing","category":"Paid Social","country":"Singapore","vendor":"Meta","note":"Meta & Twitter","fy26_budget":24000,"monthly":[2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000]},
-        {"account":"Marketing : Paid Social / YouTube","budget_owner":"APAC Marketing","category":"Paid Social","country":"China","vendor":"Baidu/WeChat","note":"CN social platforms","fy26_budget":48000,"monthly":[4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000]},
-        {"account":"Marketing : Local Brand","budget_owner":"APAC Marketing","category":"Regional Marketing","country":"Thailand","vendor":"Various","note":"Events & sponsorship","fy26_budget":30000,"monthly":[2500,2500,2500,2500,2500,2500,2500,2500,2500,2500,2500,2500]},
-        {"account":"Marketing : Local Brand","budget_owner":"APAC Marketing","category":"Regional Marketing","country":"Singapore","vendor":"Various","note":"Events","fy26_budget":18000,"monthly":[1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500]},
-        {"account":"Marketing : Local Brand","budget_owner":"APAC Marketing","category":"AMF1 Activation","country":"APAC","vendor":"AMF1","note":"AMF1 race activation","fy26_budget":60000,"monthly":[5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000]},
-        {"account":"Marketing : Local Brand","budget_owner":"APAC Marketing","category":"AMF1 Activation","country":"Thailand","vendor":"Various KOL","note":"TH influencers","fy26_budget":24000,"monthly":[2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000]},
-        {"account":"Marketing : Premium","budget_owner":"APAC Marketing","category":"Premium","country":"APAC","vendor":"Various","note":"Premium partnerships","fy26_budget":48000,"monthly":[4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000,4000]},
-        {"account":"Marketing : Partners","budget_owner":"APAC Marketing","category":"Partner","country":"APAC","vendor":"Various","note":"Partner programs","fy26_budget":36000,"monthly":[3000,3000,3000,3000,3000,3000,3000,3000,3000,3000,3000,3000]},
-        {"account":"Marketing - Refer a friend","budget_owner":"APAC Marketing","category":"RAF","country":"APAC","vendor":"Internal","note":"Refer a friend program","fy26_budget":24000,"monthly":[2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000]},
-        {"account":"Marketing : Marketing technology","budget_owner":"APAC Marketing","category":"Mar Tech","country":"APAC","vendor":"Various","note":"Marketing technology platforms","fy26_budget":84000,"monthly":[7000,7000,7000,7000,7000,7000,7000,7000,7000,7000,7000,7000]},
+        {"bu":"Marketing : Affiliate","entered_by":"APAC","channel_name":"Affiliate","country":"TH","vendor":"CJ","description":"TH CPA","planned":20000,"confirmed":18000,"actual":15000,"month":"2025-07","activity_name":"Q1 CPA Push"},
+        {"bu":"Marketing : Affiliate","entered_by":"APAC","channel_name":"Affiliate","country":"TH","vendor":"CJ","description":"TH CPA Aug","planned":22000,"confirmed":20000,"actual":19000,"month":"2025-08","activity_name":"Q1 CPA Push"},
+        {"bu":"Marketing : Paid Social","entered_by":"APAC","channel_name":"Paid Social","country":"TH","vendor":"Meta","description":"Meta ads","planned":10000,"confirmed":9500,"actual":9200,"month":"2025-07","activity_name":"Meta Q1"},
+        {"bu":"Marketing : Paid Social","entered_by":"APAC","channel_name":"Paid Social","country":"SG","vendor":"Meta","description":"SG Meta","planned":8000,"confirmed":7500,"actual":7000,"month":"2025-08","activity_name":""},
     ]
-
-    build("/home/claude/APAC_Budget_FY26.xlsx", sample)
+    build_finance_export("/home/claude/test_finance_export.xlsx", sample, [], [])
+    print("Created: /home/claude/test_finance_export.xlsx")

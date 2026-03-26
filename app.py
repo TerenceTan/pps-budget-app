@@ -8,6 +8,7 @@ import os, json, uuid, base64, io, csv
 from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, send_file
+from werkzeug.security import generate_password_hash, check_password_hash
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -58,6 +59,7 @@ TAB_CHANNELS   = "Channels"
 TAB_ACTIVITIES = "Activities"
 TAB_ENTRIES    = "Entries"
 TAB_MAPPING    = "ChannelMapping"
+TAB_VENDORS    = "Vendors"
 
 ENTRY_HEADERS = [
     "id","country","quarter","month","channel_id","channel_name",
@@ -70,6 +72,7 @@ ENTRY_HEADERS = [
 ]
 
 MAPPING_HEADERS = ["channel_keyword","bu","finance_cat","marketing_cat","updated_by","updated_at"]
+VENDOR_HEADERS  = ["id","name","country","added_by","created_at"]
 
 DEFAULT_MAPPING = [
     ("performance",  "Marketing : Programmatic - 613000009XXX",          "PPC",                  "PPC / Search"),
@@ -162,11 +165,42 @@ def get_records_cached(tab):
         if now - ts < CACHE_TTL:
             return data
     try:
-        data = get_sheet(tab).get_all_records()
+        ws = get_sheet(tab)
+        # Use expected_headers to handle duplicate/empty column names in Google Sheets
+        data = ws.get_all_records(expected_headers=_get_headers_for(tab))
     except Exception:
-        data = []
+        try:
+            # Fallback: try without expected_headers but with numericise_ignore
+            data = ws.get_all_records(numericise_ignore=['all'])
+        except Exception:
+            data = []
     _sheet_cache[tab] = (now, data)
     return data
+
+def _get_headers_for(tab):
+    """Return expected headers for a tab, or None if unknown."""
+    hdrs = {
+        TAB_BUDGETS:    ["id","country","quarter","total_budget","updated_at"],
+        TAB_CHANNELS:   ["id","country","quarter","name","budget","sort_order","created_at"],
+        TAB_ACTIVITIES: ["id","channel_id","country","quarter","name","sort_order","created_at"],
+        TAB_ENTRIES:    ENTRY_HEADERS,
+        TAB_MAPPING:    MAPPING_HEADERS,
+        TAB_VENDORS:    VENDOR_HEADERS,
+    }
+    return hdrs.get(tab, None)
+
+def safe_get_records(ws, tab=None):
+    """Get all records from a worksheet, handling duplicate headers gracefully."""
+    try:
+        hdrs = _get_headers_for(tab) if tab else None
+        if hdrs:
+            return ws.get_all_records(expected_headers=hdrs)
+        return safe_get_records(ws)
+    except Exception:
+        try:
+            return ws.get_all_records(numericise_ignore=['all'])
+        except Exception:
+            return []
 
 def invalidate_cache(tab):
     _sheet_cache.pop(tab, None)
@@ -184,6 +218,7 @@ def _init_headers(ws, tab):
         TAB_ACTIVITIES: ["id","channel_id","country","quarter","name","sort_order","created_at"],
         TAB_ENTRIES:    ENTRY_HEADERS,
         TAB_MAPPING:    MAPPING_HEADERS,
+        TAB_VENDORS:    VENDOR_HEADERS,
     }
     if tab in hdrs:
         ws.append_row(hdrs[tab])
@@ -192,11 +227,42 @@ def _init_headers(ws, tab):
             "textFormat": {"foregroundColor":{"red":1,"green":1,"blue":1},"bold":True}
         })
 
+def _ensure_entry_headers():
+    """Check if Entries sheet headers match expected. Fix if needed."""
+    try:
+        ws = get_sheet(TAB_ENTRIES)
+        row1 = ws.row_values(1)
+        if not row1:
+            return
+
+        # Check if activity_id column exists in headers
+        if "activity_id" in row1 and "activity_name" in row1:
+            return  # Already correct
+
+        # The data rows were written with 24 columns (including activity_id/activity_name)
+        # but the header row only has 22 columns (missing those two).
+        # Fix: overwrite the header row with the correct 24 headers.
+        # Data is already in the right positions — just the header labels are wrong/missing.
+        ws.update('A1:X1', [ENTRY_HEADERS])
+        ws.format("1:1", {
+            "backgroundColor": {"red":0.11,"green":0.31,"blue":0.24},
+            "textFormat": {"foregroundColor":{"red":1,"green":1,"blue":1},"bold":True}
+        })
+        print(f"[MIGRATION] Fixed Entries header row — added activity_id and activity_name columns")
+        invalidate_cache(TAB_ENTRIES)
+    except Exception as e:
+        print(f"[MIGRATION] Could not fix Entries headers: {e}")
+
 def rows_for(tab, **filters):
     try:
-        rows = get_sheet(tab).get_all_records()
+        ws = get_sheet(tab)
+        hdrs = _get_headers_for(tab)
+        rows = ws.get_all_records(expected_headers=hdrs) if hdrs else safe_get_records(ws)
     except Exception:
-        rows = []
+        try:
+            rows = ws.get_all_records(numericise_ignore=['all'])
+        except Exception:
+            rows = []
     for k, v in filters.items():
         rows = [r for r in rows if str(r.get(k,"")) == str(v)]
     return rows
@@ -267,7 +333,7 @@ def api_get_budget(country, quarter):
         for ch in channels:
             ch["activities"] = sorted([
                 {"id":a["id"],"name":a["name"],"sort_order":int(a.get("sort_order") or 0)}
-                for a in all_acts if a["channel_id"] == ch["id"]
+                for a in all_acts if str(a["channel_id"]) == str(ch["id"])
             ], key=lambda x: x["sort_order"])
 
         # Load mapping for auto-fill
@@ -314,7 +380,7 @@ def api_add_activity():
 def api_update_activity(act_id):
     d = request.get_json()
     ws = get_sheet(TAB_ACTIVITIES)
-    rows = ws.get_all_records()
+    rows = safe_get_records(ws, TAB_ACTIVITIES)
     idx = next((i for i,r in enumerate(rows) if r["id"]==act_id), None)
     if idx is None: return jsonify({"error":"Not found"}), 404
     r = rows[idx]
@@ -327,7 +393,7 @@ def api_update_activity(act_id):
 @require_admin
 def api_delete_activity(act_id):
     ws = get_sheet(TAB_ACTIVITIES)
-    rows = ws.get_all_records()
+    rows = safe_get_records(ws, TAB_ACTIVITIES)
     idx = next((i for i,r in enumerate(rows) if r["id"]==act_id), None)
     if idx is None: return jsonify({"error":"Not found"}), 404
     ws.delete_rows(idx+2)
@@ -365,13 +431,117 @@ def api_save_mapping():
     invalidate_cache(TAB_MAPPING)
     return jsonify({"ok":True, "count":len(mappings)})
 
+# ── VENDORS API ──────────────────────────────────────────────
+@app.route("/api/vendors")
+@require_login
+def api_get_vendors():
+    """Returns all vendors. Global vendors have country='GLOBAL', market-specific have country code."""
+    try:
+        vendors = get_records_cached(TAB_VENDORS)
+        user = session.get("user","")
+        # Everyone sees global + their own market vendors
+        if user != ADMIN_MARKET:
+            vendors = [v for v in vendors if v.get("country") in ("GLOBAL", user)]
+        result = [{"id":v["id"],"name":v["name"],"country":v.get("country","GLOBAL")} for v in vendors]
+        # Deduplicate by name (case-insensitive)
+        seen = set()
+        unique = []
+        for v in result:
+            key = v["name"].lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(v)
+        return jsonify(sorted(unique, key=lambda x: x["name"].lower()))
+    except Exception:
+        return jsonify([])
+
+@app.route("/api/vendors", methods=["POST"])
+@require_login
+def api_add_vendor():
+    d = request.get_json()
+    name = d.get("name","").strip()
+    if not name:
+        return jsonify({"error":"Name required"}), 400
+    # Admin can add global, market users add to their market
+    user = session.get("user","")
+    vendor_country = d.get("country", "GLOBAL" if user == ADMIN_MARKET else user)
+    vid = "v_" + str(uuid.uuid4())[:8]
+    now = datetime.utcnow().isoformat()
+    get_sheet(TAB_VENDORS).append_row([vid, name, vendor_country, user, now])
+    invalidate_cache(TAB_VENDORS)
+    return jsonify({"id":vid, "name":name, "country":vendor_country})
+
+@app.route("/api/vendors/<vid>", methods=["DELETE"])
+@require_login
+@require_admin
+def api_delete_vendor(vid):
+    ws = get_sheet(TAB_VENDORS)
+    rows = safe_get_records(ws, TAB_VENDORS)
+    idx = next((i for i,r in enumerate(rows) if r["id"]==vid), None)
+    if idx is None: return jsonify({"error":"Not found"}), 404
+    ws.delete_rows(idx+2)
+    invalidate_cache(TAB_VENDORS)
+    return jsonify({"ok":True})
+
+@app.route("/api/vendors/import", methods=["POST"])
+@require_login
+@require_admin
+def api_import_vendors():
+    """Bulk import vendors from CSV/XLSX. Columns: Name, Country (optional, defaults to GLOBAL)"""
+    if 'file' not in request.files:
+        return jsonify({"error":"No file"}), 400
+    f = request.files['file']
+    fname = f.filename.lower()
+    parsed = []
+    try:
+        if fname.endswith(('.xlsx','.xls')):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True, read_only=True)
+            ws_xl = wb.active
+            all_rows = list(ws_xl.iter_rows(values_only=True))
+            wb.close()
+            first = [str(v or '').lower() for v in all_rows[0]] if all_rows else []
+            start = 1 if any(k in ' '.join(first) for k in ['name','vendor']) else 0
+            for row in all_rows[start:]:
+                vals = [str(v).strip() if v is not None else '' for v in row]
+                if vals and vals[0]: parsed.append(vals)
+        else:
+            content = f.read().decode('utf-8-sig')
+            lines = [l.strip() for l in content.splitlines() if l.strip()]
+            first = lines[0].lower() if lines else ''
+            has_hdr = 'name' in first or 'vendor' in first
+            data_lines = lines[1:] if has_hdr else lines
+            import csv as _csv
+            for row in _csv.reader(data_lines):
+                if row and row[0].strip(): parsed.append(row)
+    except Exception as e:
+        return jsonify({"error":f"Parse failed: {str(e)}"}), 400
+
+    ws = get_sheet(TAB_VENDORS)
+    existing = [v["name"].lower() for v in safe_get_records(ws, TAB_VENDORS)]
+    now = datetime.utcnow().isoformat()
+    saved, skipped = 0, 0
+    saved_rows = []
+    for row in parsed:
+        name = row[0].strip()
+        vendor_country = row[1].strip().upper() if len(row)>1 and row[1].strip() else "GLOBAL"
+        if name.lower() in existing:
+            skipped += 1; continue
+        vid = "v_" + str(uuid.uuid4())[:8]
+        ws.append_row([vid, name, vendor_country, session["user"], now])
+        existing.append(name.lower())
+        saved += 1
+        saved_rows.append({"name":name, "country":vendor_country})
+    invalidate_cache(TAB_VENDORS)
+    return jsonify({"ok":True, "saved":saved, "skipped":skipped, "rows":saved_rows})
+
 @app.route("/api/budget/<country>/<quarter>", methods=["POST"])
 @require_login
 @require_admin
 def api_save_budget(country, quarter):
     total = float(request.get_json().get("total", 0))
     ws  = get_sheet(TAB_BUDGETS)
-    rows = ws.get_all_records()
+    rows = safe_get_records(ws, TAB_BUDGETS)
     now = datetime.utcnow().isoformat()
     idx = next((i for i,r in enumerate(rows) if r["country"]==country and r["quarter"]==quarter), None)
     if idx is not None:
@@ -402,7 +572,7 @@ def api_add_channel():
 def api_update_channel(ch_id):
     d = request.get_json()
     ws = get_sheet(TAB_CHANNELS)
-    rows = ws.get_all_records()
+    rows = safe_get_records(ws, TAB_CHANNELS)
     idx = next((i for i,r in enumerate(rows) if r["id"]==ch_id), None)
     if idx is None: return jsonify({"error":"Not found"}), 404
     r = rows[idx]
@@ -419,7 +589,7 @@ def api_update_channel(ch_id):
 @require_admin
 def api_delete_channel(ch_id):
     ws = get_sheet(TAB_CHANNELS)
-    rows = ws.get_all_records()
+    rows = safe_get_records(ws, TAB_CHANNELS)
     idx = next((i for i,r in enumerate(rows) if r["id"]==ch_id), None)
     if idx is None: return jsonify({"error":"Not found"}), 404
     ws.delete_rows(idx+2)
@@ -463,121 +633,118 @@ def api_add_entry():
     country = d.get("country","")
     if not check_country_access(country):
         return jsonify({"error":"Forbidden"}), 403
-    entry_id = "e_" + str(uuid.uuid4())[:10]
-    now = datetime.utcnow().isoformat()
+    try:
+        entry_id = "e_" + str(uuid.uuid4())[:10]
+        now = datetime.utcnow().isoformat()
 
-    # Save invoice files to disk, store only filenames in Sheets
-    inv_names = d.get("invoice_names", [])
-    inv_data_urls = d.get("invoice_data", [])
-    stored_files = []
-    for i, name in enumerate(inv_names):
-        if i < len(inv_data_urls) and inv_data_urls[i]:
-            stored = save_invoice_to_disk(inv_data_urls[i], entry_id, name)
-            if stored:
-                stored_files.append(stored)
-        # else: name without data (shouldn't happen on add, but handle gracefully)
+        # Save invoice files to disk, store only filenames in Sheets
+        inv_names = d.get("invoice_names", [])
+        inv_data_urls = d.get("invoice_data", [])
+        stored_files = []
+        for i, name in enumerate(inv_names):
+            if i < len(inv_data_urls) and inv_data_urls[i]:
+                stored = save_invoice_to_disk(inv_data_urls[i], entry_id, name)
+                if stored:
+                    stored_files.append(stored)
 
-    get_sheet(TAB_ENTRIES).append_row([
-        entry_id, country,
-        d.get("quarter",""), d.get("month",""),
-        d.get("channel_id",""), d.get("channel_name",""),
-        d.get("activity_id",""), d.get("activity_name",""),
-        d.get("bu",""), d.get("finance_cat",""), d.get("marketing_cat",""),
-        d.get("description",""),
-        float(d.get("planned") or 0), float(d.get("confirmed") or 0), float(d.get("actual") or 0),
-        d.get("jira",""), d.get("vendor",""), d.get("notes",""),
-        str(d.get("approved", False)),
-        json.dumps(inv_names),
-        json.dumps(stored_files),
-        session["user"], now, now
-    ])
-    invalidate_cache(TAB_ENTRIES)
-    return jsonify({"id":entry_id,"ok":True})
+        get_sheet(TAB_ENTRIES).append_row([
+            entry_id, country,
+            d.get("quarter",""), d.get("month",""),
+            d.get("channel_id",""), d.get("channel_name",""),
+            d.get("activity_id",""), d.get("activity_name",""),
+            d.get("bu",""), d.get("finance_cat",""), d.get("marketing_cat",""),
+            d.get("description",""),
+            float(d.get("planned") or 0), float(d.get("confirmed") or 0), float(d.get("actual") or 0),
+            d.get("jira",""), d.get("vendor",""), d.get("notes",""),
+            str(d.get("approved", False)),
+            json.dumps(inv_names),
+            json.dumps(stored_files),
+            session["user"], now, now
+        ])
+        invalidate_cache(TAB_ENTRIES)
+        return jsonify({"id":entry_id,"ok":True})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Save failed: {str(e)}"}), 500
 
 @app.route("/api/entries/<entry_id>", methods=["PUT"])
 @require_login
 def api_update_entry(entry_id):
     d = request.get_json()
-    ws = get_sheet(TAB_ENTRIES)
-    rows = ws.get_all_records()
-    idx = next((i for i,r in enumerate(rows) if r["id"]==entry_id), None)
-    if idx is None: return jsonify({"error":"Not found"}), 404
-    r = rows[idx]
-    if not check_country_access(r["country"]):
-        return jsonify({"error":"Forbidden"}), 403
+    try:
+        ws = get_sheet(TAB_ENTRIES)
+        rows = safe_get_records(ws, TAB_ENTRIES)
+        idx = next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)), None)
+        if idx is None: return jsonify({"error":"Not found"}), 404
+        r = rows[idx]
+        if not check_country_access(str(r.get("country",""))):
+            return jsonify({"error":"Forbidden"}), 403
 
-    approved = d.get("approved", str(r["approved"]).lower()=="true")
-    jira = d.get("jira", r["jira"])
-    if approved and not jira:
-        return jsonify({"error":"JIRA link required before approving"}), 400
+        approved = d.get("approved", str(r.get("approved","")).lower()=="true")
+        jira = d.get("jira", r.get("jira",""))
 
-    inv_names_new = d.get("invoice_names", None)
-    inv_data_new  = d.get("invoice_data", None)
+        inv_names_new = d.get("invoice_names", None)
+        inv_data_new  = d.get("invoice_data", None)
 
-    # Existing stored file references from Sheets
-    existing_names = json.loads(r.get("invoice_names") or "[]")
-    existing_files = json.loads(r.get("invoice_data")  or "[]")
+        existing_names = json.loads(str(r.get("invoice_names") or "[]"))
+        existing_files = json.loads(str(r.get("invoice_data")  or "[]"))
 
-    if inv_names_new is not None:
-        new_data_urls = inv_data_new if inv_data_new else []
-
-        final_names = []
-        final_files = []
-        for name in inv_names_new:
-            # Check if it's a surviving existing invoice
-            if name in existing_names:
-                old_idx = existing_names.index(name)
-                final_names.append(name)
-                if old_idx < len(existing_files):
-                    final_files.append(existing_files[old_idx])
+        if inv_names_new is not None:
+            new_data_urls = inv_data_new if inv_data_new else []
+            final_names = []
+            final_files = []
+            for name in inv_names_new:
+                if name in existing_names:
+                    old_idx = existing_names.index(name)
+                    final_names.append(name)
+                    final_files.append(existing_files[old_idx] if old_idx < len(existing_files) else "")
+                    existing_names[old_idx] = None
+                elif new_data_urls:
+                    data_url = new_data_urls.pop(0)
+                    stored = save_invoice_to_disk(data_url, entry_id, name)
+                    final_names.append(name)
+                    final_files.append(stored or "")
                 else:
+                    final_names.append(name)
                     final_files.append("")
-                existing_names[old_idx] = None  # mark used
-            elif new_data_urls:
-                # New upload — save to disk
-                data_url = new_data_urls.pop(0)
-                stored = save_invoice_to_disk(data_url, entry_id, name)
-                final_names.append(name)
-                final_files.append(stored or "")
-            else:
-                final_names.append(name)
-                final_files.append("")
+            inv_names = json.dumps(final_names)
+            inv_data  = json.dumps(final_files)
+        else:
+            inv_names = json.dumps(existing_names)
+            inv_data  = json.dumps(existing_files)
+        now = datetime.utcnow().isoformat()
 
-        inv_names = json.dumps(final_names)
-        inv_data  = json.dumps(final_files)
-    else:
-        inv_names = json.dumps(existing_names)
-        inv_data  = json.dumps(existing_files)
-    now = datetime.utcnow().isoformat()
-
-    ws.update(f"A{idx+2}:W{idx+2}", [[
-        entry_id, r["country"],
-        d.get("quarter", r["quarter"]), d.get("month", r["month"]),
-        d.get("channel_id", r["channel_id"]), d.get("channel_name", r["channel_name"]),
-        d.get("activity_id", r.get("activity_id","")), d.get("activity_name", r.get("activity_name","")),
-        d.get("bu", r["bu"]), d.get("finance_cat", r["finance_cat"]),
-        d.get("marketing_cat", r["marketing_cat"]),
-        d.get("description", r["description"]),
-        float(d.get("planned", r["planned"]) or 0),
-        float(d.get("confirmed", r["confirmed"]) or 0),
-        float(d.get("actual", r["actual"]) or 0),
-        jira, d.get("vendor", r["vendor"]), d.get("notes", r["notes"]),
-        str(approved), inv_names, inv_data,
-        r["entered_by"], r["created_at"], now
-    ]])
-    invalidate_cache(TAB_ENTRIES)
-    return jsonify({"ok":True})
+        # Update all 24 columns (A through X)
+        ws.update(f"A{idx+2}:X{idx+2}", [[
+            entry_id, r.get("country",""),
+            d.get("quarter", r.get("quarter","")), d.get("month", r.get("month","")),
+            d.get("channel_id", r.get("channel_id","")), d.get("channel_name", r.get("channel_name","")),
+            d.get("activity_id", r.get("activity_id","")), d.get("activity_name", r.get("activity_name","")),
+            d.get("bu", r.get("bu","")), d.get("finance_cat", r.get("finance_cat","")),
+            d.get("marketing_cat", r.get("marketing_cat","")),
+            d.get("description", r.get("description","")),
+            float(d.get("planned", r.get("planned",0)) or 0),
+            float(d.get("confirmed", r.get("confirmed",0)) or 0),
+            float(d.get("actual", r.get("actual",0)) or 0),
+            jira, d.get("vendor", r.get("vendor","")), d.get("notes", r.get("notes","")),
+            str(approved), inv_names, inv_data,
+            r.get("entered_by",""), r.get("created_at",""), now
+        ]])
+        invalidate_cache(TAB_ENTRIES)
+        return jsonify({"ok":True})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Update failed: {str(e)}"}), 500
 
 @app.route("/api/entries/<entry_id>", methods=["DELETE"])
 @require_login
 def api_delete_entry(entry_id):
     user = session["user"]
     ws = get_sheet(TAB_ENTRIES)
-    rows = ws.get_all_records()
-    idx = next((i for i,r in enumerate(rows) if r["id"]==entry_id), None)
+    rows = safe_get_records(ws, TAB_ENTRIES)
+    idx = next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)), None)
     if idx is None: return jsonify({"error":"Not found"}), 404
-    # Admin can delete anything; market users can only delete their own
-    if user != ADMIN_MARKET and rows[idx]["country"] != user:
+    if user != ADMIN_MARKET and str(rows[idx].get("country","")) != user:
         return jsonify({"error":"Forbidden"}), 403
     ws.delete_rows(idx+2)
     invalidate_cache(TAB_ENTRIES)
@@ -619,7 +786,7 @@ def api_budget_template():
 @app.route("/api/invoice/<entry_id>/<int:inv_idx>")
 @require_login
 def api_invoice(entry_id, inv_idx):
-    rows = get_sheet(TAB_ENTRIES).get_all_records()
+    rows = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
     r = next((row for row in rows if row["id"]==entry_id), None)
     if not r: return "Not found", 404
     names = json.loads(r.get("invoice_names") or "[]")
@@ -760,8 +927,8 @@ def api_import_channels():
     skipped_invalid = 0
     ws_ch = get_sheet(TAB_CHANNELS)
     ws_bud = get_sheet(TAB_BUDGETS)
-    existing_ch = ws_ch.get_all_records()
-    existing_bud = ws_bud.get_all_records()
+    existing_ch = safe_get_records(ws_ch, TAB_CHANNELS)
+    existing_bud = safe_get_records(ws_bud, TAB_BUDGETS)
     now = datetime.utcnow().isoformat()
 
     for row in parsed_rows:
@@ -867,7 +1034,7 @@ def api_import_budgets():
         return jsonify({"error": f"Could not parse file: {str(e)}"}), 400
 
     ws = get_sheet(TAB_BUDGETS)
-    existing = ws.get_all_records()
+    existing = safe_get_records(ws, TAB_BUDGETS)
     now = datetime.utcnow().isoformat()
     saved, skipped = 0, 0
     saved_rows = []
@@ -913,9 +1080,9 @@ def api_budget_summary():
         channels = get_records_cached(TAB_CHANNELS)
         result = []
         for b in budgets:
-            co, q = b["country"], b["quarter"]
+            co, q = str(b["country"]), str(b["quarter"])
             total = float(b.get("total_budget") or 0)
-            ch_list = [c for c in channels if c["country"]==co and c["quarter"]==q]
+            ch_list = [c for c in channels if str(c["country"])==co and str(c["quarter"])==q]
             allocated = sum(float(c.get("budget") or 0) for c in ch_list)
             result.append({
                 "country": co, "quarter": q,
@@ -934,63 +1101,136 @@ def api_budget_summary():
 @require_admin
 def api_reconciliation(quarter):
     """
-    Quarter-level reconciliation: for each market in the given quarter,
-    returns plan budget vs sum(planned) vs sum(confirmed) vs sum(actual)
-    with gap flags.
+    Full hierarchy reconciliation using rows_for_cached (same filtering as dashboard).
     """
     try:
-        budgets  = get_records_cached(TAB_BUDGETS)
-        channels = get_records_cached(TAB_CHANNELS)
-        entries  = get_records_cached(TAB_ENTRIES)
+        # Get all budgets for this quarter
+        all_budgets = get_records_cached(TAB_BUDGETS)
+        all_channels = get_records_cached(TAB_CHANNELS)
+        all_activities = get_records_cached(TAB_ACTIVITIES)
 
-        # All markets that have either a budget or entries for this quarter
-        markets_with_data = set()
-        for b in budgets:
-            if b["quarter"] == quarter:
-                markets_with_data.add(b["country"])
-        for e in entries:
-            if e.get("quarter") == quarter:
-                markets_with_data.add(e["country"])
+        # Find all markets with budget or entries for this quarter
+        q_budgets = [b for b in all_budgets if str(b.get("quarter",""))==quarter]
+        markets_from_budgets = {str(b["country"]) for b in q_budgets}
+
+        # Also check entries — use rows_for_cached which does str() comparison
+        all_q_entries = rows_for_cached(TAB_ENTRIES, quarter=quarter)
+        markets_from_entries = {str(e["country"]) for e in all_q_entries}
+
+        all_markets = sorted(markets_from_budgets | markets_from_entries)
 
         result = []
-        for mkt in sorted(markets_with_data):
-            brow = next((b for b in budgets if b["country"]==mkt and b["quarter"]==quarter), None)
+        for mkt in all_markets:
+            # Budget for this market+quarter
+            brow = next((b for b in q_budgets if str(b["country"])==mkt), None)
             plan_budget = float(brow["total_budget"]) if brow else 0
 
-            ch_list = [c for c in channels if c["country"]==mkt and c["quarter"]==quarter]
-            ch_allocated = sum(float(c.get("budget") or 0) for c in ch_list)
+            # Channels for this market+quarter
+            mkt_channels = [c for c in all_channels if str(c.get("country",""))==mkt and str(c.get("quarter",""))==quarter]
 
-            mkt_entries = [e for e in entries if e["country"]==mkt and e.get("quarter")==quarter]
-            sum_planned   = sum(float(e.get("planned")   or 0) for e in mkt_entries)
+            # Entries for this market+quarter — use rows_for_cached
+            mkt_entries = rows_for_cached(TAB_ENTRIES, country=mkt, quarter=quarter)
+
+            # Build channel hierarchy
+            ch_data = []
+            assigned_entry_ids = set()
+            for ch in sorted(mkt_channels, key=lambda c: int(c.get("sort_order") or 0)):
+                ch_id_str = str(ch["id"])
+                ch_entries = [e for e in mkt_entries if str(e.get("channel_id",""))==ch_id_str]
+                ch_acts = [a for a in all_activities if str(a.get("channel_id",""))==ch_id_str and str(a.get("country",""))==mkt and str(a.get("quarter",""))==quarter]
+
+                act_data = []
+                act_entry_ids = set()
+                for act in sorted(ch_acts, key=lambda a: int(a.get("sort_order") or 0)):
+                    act_id_str = str(act["id"])
+                    a_entries = [e for e in ch_entries if str(e.get("activity_id",""))==act_id_str]
+                    a_items = []
+                    for e in a_entries:
+                        act_entry_ids.add(str(e["id"]))
+                        assigned_entry_ids.add(str(e["id"]))
+                        a_items.append(_entry_summary(e))
+                    act_data.append({
+                        "id": act["id"], "name": act["name"],
+                        "planned": sum(i["planned"] for i in a_items),
+                        "confirmed": sum(i["confirmed"] for i in a_items),
+                        "actual": sum(i["actual"] for i in a_items),
+                        "entries": len(a_items), "items": a_items,
+                    })
+
+                unassigned = [e for e in ch_entries if str(e["id"]) not in act_entry_ids]
+                unassigned_items = []
+                for e in unassigned:
+                    assigned_entry_ids.add(str(e["id"]))
+                    unassigned_items.append(_entry_summary(e))
+
+                ch_pln = sum(float(e.get("planned") or 0) for e in ch_entries)
+                ch_con = sum(float(e.get("confirmed") or 0) for e in ch_entries)
+                ch_act_val = sum(float(e.get("actual") or 0) for e in ch_entries)
+
+                ch_data.append({
+                    "id": ch["id"], "name": ch["name"],
+                    "budget": float(ch.get("budget") or 0),
+                    "planned": ch_pln, "confirmed": ch_con, "actual": ch_act_val,
+                    "entries": len(ch_entries),
+                    "activities": act_data,
+                    "unassigned": unassigned_items,
+                })
+
+            orphan_entries = [e for e in mkt_entries if str(e["id"]) not in assigned_entry_ids]
+            orphan_items = [_entry_summary(e) for e in orphan_entries]
+
+            sum_planned   = sum(float(e.get("planned") or 0) for e in mkt_entries)
             sum_confirmed = sum(float(e.get("confirmed") or 0) for e in mkt_entries)
-            sum_actual    = sum(float(e.get("actual")    or 0) for e in mkt_entries)
-            entry_count   = len(mkt_entries)
+            sum_actual    = sum(float(e.get("actual") or 0) for e in mkt_entries)
 
-            # Health flags
-            no_actual    = sum(1 for e in mkt_entries if float(e.get("planned") or 0) > 0 and float(e.get("actual") or 0) == 0)
-            no_confirmed = sum(1 for e in mkt_entries if float(e.get("planned") or 0) > 0 and float(e.get("confirmed") or 0) == 0)
-            no_jira      = sum(1 for e in mkt_entries if not e.get("jira"))
-            no_invoice   = sum(1 for e in mkt_entries if float(e.get("actual") or 0) > 0 and not e.get("invoice_names","[]").strip("[]"))
+            no_actual  = sum(1 for e in mkt_entries if float(e.get("planned") or 0) > 0 and float(e.get("actual") or 0) == 0)
+            no_jira    = sum(1 for e in mkt_entries if not e.get("jira"))
+            no_invoice = sum(1 for e in mkt_entries if float(e.get("actual") or 0) > 0 and not str(e.get("invoice_names","[]")).strip("[]"))
 
             result.append({
-                "country": mkt,
-                "plan_budget": plan_budget,
-                "ch_allocated": ch_allocated,
-                "sum_planned": sum_planned,
-                "sum_confirmed": sum_confirmed,
-                "sum_actual": sum_actual,
-                "entries": entry_count,
-                "channels": len(ch_list),
+                "country": mkt, "plan_budget": plan_budget,
+                "ch_allocated": sum(float(c.get("budget") or 0) for c in mkt_channels),
+                "sum_planned": sum_planned, "sum_confirmed": sum_confirmed, "sum_actual": sum_actual,
+                "entries": len(mkt_entries), "channels_data": ch_data,
+                "orphan_entries": orphan_items,
                 "var_plan_vs_actual": sum_actual - sum_planned,
-                "var_budget_vs_planned": sum_planned - plan_budget,
-                "flags": {
-                    "no_actual": no_actual,
-                    "no_confirmed": no_confirmed,
-                    "no_jira": no_jira,
-                    "no_invoice": no_invoice,
-                },
+                "flags": {"no_actual":no_actual,"no_jira":no_jira,"no_invoice":no_invoice},
             })
         return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+def _entry_summary(e):
+    return {
+        "id": e["id"], "month": e.get("month",""), "description": e.get("description",""),
+        "vendor": e.get("vendor",""), "activity_name": e.get("activity_name",""),
+        "planned": float(e.get("planned") or 0), "confirmed": float(e.get("confirmed") or 0),
+        "actual": float(e.get("actual") or 0), "jira": e.get("jira",""),
+        "approved": str(e.get("approved","")).lower()=="true",
+    }
+
+# ── DEBUG: raw sheet data viewer ─────────────────────────────
+@app.route("/api/debug/entries")
+@require_login
+@require_admin
+def api_debug_entries():
+    """Shows raw entry data from Google Sheets for debugging."""
+    try:
+        ws = get_sheet(TAB_ENTRIES)
+        raw = safe_get_records(ws, TAB_ENTRIES)
+        # Show first 10 entries with all fields and types
+        debug = []
+        for r in raw[:20]:
+            debug.append({k: {"val": str(v), "type": type(v).__name__} for k, v in r.items()})
+        # Also show what rows_for_cached returns for TH/Q4
+        cached = rows_for_cached(TAB_ENTRIES, country="TH", quarter="Q4")
+        return jsonify({
+            "total_raw": len(raw),
+            "sample_raw": debug,
+            "cached_TH_Q4": len(cached),
+            "cached_sample": [{k: str(v) for k,v in e.items()} for e in cached[:5]],
+        })
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -1009,7 +1249,7 @@ def api_campaigns():
         q_filter = request.args.get("quarter", "")
 
         if q_filter:
-            entries = [e for e in entries if e.get("quarter") == q_filter]
+            entries = [e for e in entries if str(e.get("quarter","")) == q_filter]
 
         # Group by activity_name (campaign)
         from collections import defaultdict
@@ -1061,7 +1301,7 @@ def api_campaigns():
 @require_login
 def api_export():
     user = session["user"]
-    rows = get_sheet(TAB_ENTRIES).get_all_records()
+    rows = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
     if user != ADMIN_MARKET:
         rows = [r for r in rows if r["country"]==user]
     out = io.StringIO()
@@ -1090,11 +1330,11 @@ def api_export():
 @require_login
 @require_admin
 def api_admin_overview():
-    budgets = get_sheet(TAB_BUDGETS).get_all_records()
-    entries = get_sheet(TAB_ENTRIES).get_all_records()
+    budgets = safe_get_records(get_sheet(TAB_BUDGETS), TAB_BUDGETS)
+    entries = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
     result = []
     for b in budgets:
-        ces = [e for e in entries if e["country"]==b["country"] and e["quarter"]==b["quarter"]]
+        ces = [e for e in entries if str(e["country"])==str(b["country"]) and str(e["quarter"])==str(b["quarter"])]
         result.append({
             "country": b["country"], "quarter": b["quarter"],
             "total": float(b["total_budget"] or 0),
@@ -1104,59 +1344,37 @@ def api_admin_overview():
         })
     return jsonify(result)
 
-# ── XLSX EXPORT (APAC budget format) ─────────────────────────
+# ── XLSX EXPORT (Finance APAC format) ─────────────────────────
 @app.route("/api/export/xlsx")
 @require_login
 def api_export_xlsx():
-    from export_xlsx import build
-    import tempfile, os
+    from export_xlsx import build_finance_export
+    import tempfile
 
     user = session["user"]
 
-    # Pull all entries + budget configs from Sheets
-    all_entries  = get_sheet(TAB_ENTRIES).get_all_records()
-    all_channels = get_sheet(TAB_CHANNELS).get_all_records()
-    all_budgets  = get_sheet(TAB_BUDGETS).get_all_records()
+    # Pull data from Sheets
+    all_entries  = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
+    all_channels = safe_get_records(get_sheet(TAB_CHANNELS), TAB_CHANNELS)
+    all_budgets  = safe_get_records(get_sheet(TAB_BUDGETS), TAB_BUDGETS)
 
     if user != ADMIN_MARKET:
-        all_entries  = [e for e in all_entries  if e["country"] == user]
-        all_channels = [c for c in all_channels if c["country"] == user]
-        all_budgets  = [b for b in all_budgets  if b["country"] == user]
+        all_entries  = [e for e in all_entries if str(e.get("country","")) == user]
+        all_channels = [c for c in all_channels if str(c.get("country","")) == user]
+        all_budgets  = [b for b in all_budgets  if str(b.get("country","")) == user]
 
-    # Build budget_data rows in the format expected by build()
-    budget_rows = []
-    for entry in all_entries:
-        # Map channel name to category
-        ch = next((c for c in all_channels if c["id"] == entry.get("channel_id", "")), {})
-        monthly = [0] * 12
-        # If month is set, place actual/planned in correct month slot
-        month_val = entry.get("month", "")
-        month_map = {
-            "2025-07":0,"2025-08":1,"2025-09":2,"2025-10":3,
-            "2025-11":4,"2025-12":5,"2026-01":6,"2026-02":7,
-            "2026-03":8,"2026-04":9,"2026-05":10,"2026-06":11,
-        }
-        slot = month_map.get(month_val, -1)
-        if slot >= 0:
-            monthly[slot] = float(entry.get("planned") or 0)
-
-        budget_rows.append({
-            "account":       entry.get("bu", ""),
-            "budget_owner":  entry.get("entered_by", ""),
-            "category":      ch.get("name", entry.get("channel_name", "")),
-            "country":       entry.get("country", ""),
-            "vendor":        entry.get("vendor", ""),
-            "note":          entry.get("description", ""),
-            "fy26_budget":   float(entry.get("planned") or 0),
-            "monthly":       monthly,
-        })
-
-    # Generate temp file
+    # Generate
     tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
     tmp.close()
-    build(tmp.name, budget_rows)
 
-    fname = f"APAC_Budget_FY26_{'ALL' if user==ADMIN_MARKET else user}_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    try:
+        build_finance_export(tmp.name, all_entries, all_channels, all_budgets)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        os.unlink(tmp.name)
+        return jsonify({"error": f"Export failed: {str(e)}"}), 500
+
+    fname = f"APAC_Marketing_FY26_{'ALL' if user==ADMIN_MARKET else user}_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     response = send_file(tmp.name, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                          as_attachment=True, download_name=fname)
 
@@ -1168,4 +1386,9 @@ def api_export_xlsx():
     return response
 
 if __name__ == "__main__":
+    # Auto-fix missing columns on startup
+    try:
+        _ensure_entry_headers()
+    except Exception as e:
+        print(f"[STARTUP] Migration check failed: {e}")
     app.run(debug=True, port=5000)
