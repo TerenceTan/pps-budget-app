@@ -60,6 +60,7 @@ TAB_ACTIVITIES = "Activities"
 TAB_ENTRIES    = "Entries"
 TAB_MAPPING    = "ChannelMapping"
 TAB_VENDORS    = "Vendors"
+TAB_USERS      = "Users"
 
 ENTRY_HEADERS = [
     "id","country","quarter","month","channel_id","channel_name",
@@ -73,6 +74,28 @@ ENTRY_HEADERS = [
 
 MAPPING_HEADERS = ["channel_keyword","bu","finance_cat","marketing_cat","updated_by","updated_at"]
 VENDOR_HEADERS  = ["id","name","country","added_by","created_at"]
+USER_HEADERS    = ["username","password_hash","display_name","role","markets","created_at"]
+
+# Default users — seeded on first run
+# role: admin | editor | country
+# markets: "ALL" or comma-separated like "TH" or "TH,SG"
+DEFAULT_USERS = [
+    ("pepper", "APAC@123", "Pepper (Admin)", "admin", "ALL"),
+    ("affiliate", "Affiliate@123", "Affiliate Manager", "editor", "ALL"),
+    ("performance", "Performance@123", "Performance Marketing", "editor", "ALL"),
+    ("campaigns", "Campaigns@123", "Campaign Manager", "editor", "ALL"),
+    ("th_sales", "TH@123", "Thailand Sales", "country", "TH"),
+    ("sg_sales", "SG@123", "Singapore Sales", "country", "SG"),
+    ("cn_sales", "CN@123", "China Sales", "country", "CN"),
+    ("hkg_sales", "HKG@123", "Hong Kong Sales", "country", "HKG"),
+    ("id_sales", "ID@123", "Indonesia Sales", "country", "ID"),
+    ("in_sales", "IN@123", "India Sales", "country", "IN"),
+    ("my_sales", "MY@123", "Malaysia Sales", "country", "MY"),
+    ("vn_sales", "VN@123", "Vietnam Sales", "country", "VN"),
+    ("tw_sales", "TW@123", "Taiwan Sales", "country", "TW"),
+    ("ph_sales", "PH@123", "Philippines Sales", "country", "PH"),
+    ("mn_sales", "MN@123", "Mongolia Sales", "country", "MN"),
+]
 
 DEFAULT_MAPPING = [
     ("performance",  "Marketing : Programmatic - 613000009XXX",          "PPC",                  "PPC / Search"),
@@ -186,6 +209,7 @@ def _get_headers_for(tab):
         TAB_ENTRIES:    ENTRY_HEADERS,
         TAB_MAPPING:    MAPPING_HEADERS,
         TAB_VENDORS:    VENDOR_HEADERS,
+        TAB_USERS:      USER_HEADERS,
     }
     return hdrs.get(tab, None)
 
@@ -219,6 +243,7 @@ def _init_headers(ws, tab):
         TAB_ENTRIES:    ENTRY_HEADERS,
         TAB_MAPPING:    MAPPING_HEADERS,
         TAB_VENDORS:    VENDOR_HEADERS,
+        TAB_USERS:      USER_HEADERS,
     }
     if tab in hdrs:
         ws.append_row(hdrs[tab])
@@ -267,11 +292,37 @@ def rows_for(tab, **filters):
         rows = [r for r in rows if str(r.get(k,"")) == str(v)]
     return rows
 
-# ── AUTH DECORATORS ───────────────────────────────────────────
+# ── AUTH ──────────────────────────────────────────────────────
+def _seed_users():
+    """Create default users if Users tab is empty."""
+    ws = get_sheet(TAB_USERS)
+    existing = safe_get_records(ws, TAB_USERS)
+    if existing:
+        return  # Already seeded
+    now = datetime.utcnow().isoformat()
+    for uname, pwd, display, role, markets in DEFAULT_USERS:
+        ws.append_row([uname, generate_password_hash(pwd), display, role, markets, now])
+    print(f"[SEED] Created {len(DEFAULT_USERS)} default users")
+
+def _get_user(username):
+    """Look up a user by username."""
+    users = safe_get_records(get_sheet(TAB_USERS), TAB_USERS)
+    return next((u for u in users if str(u.get("username","")).lower()==username.lower()), None)
+
+def _get_all_users():
+    """Get all users (for login dropdown)."""
+    return safe_get_records(get_sheet(TAB_USERS), TAB_USERS)
+
+def _current_user():
+    """Get current logged-in user dict from session."""
+    uname = session.get("username")
+    if not uname: return None
+    return _get_user(uname)
+
 def require_login(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("user"):
+        if not session.get("username"):
             return jsonify({"error":"Not authenticated"}), 401
         return f(*args, **kwargs)
     return decorated
@@ -279,33 +330,72 @@ def require_login(f):
 def require_admin(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if session.get("user") != ADMIN_MARKET:
+        if session.get("role") != "admin":
             return jsonify({"error":"Admin required"}), 403
         return f(*args, **kwargs)
     return decorated
 
 def check_country_access(country):
-    u = session.get("user")
-    if u != ADMIN_MARKET and u != country:
-        return False
-    return True
+    role = session.get("role","")
+    if role == "admin" or role == "editor":
+        return True
+    # Country role — check if this market is in their allowed list
+    markets = session.get("markets","")
+    if markets == "ALL":
+        return True
+    allowed = [m.strip() for m in markets.split(",")]
+    return country in allowed
 
 # ── PAGES ─────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    if not session.get("user"):
-        return render_template("login.html", markets=MARKETS)
+    if not session.get("username"):
+        users = _get_all_users()
+        user_list = [{"username":u.get("username",""), "display_name":u.get("display_name",u.get("username",""))} for u in users]
+        return render_template("login.html", users=user_list, markets=MARKETS)
+
+    role = session.get("role","country")
+    user_markets = session.get("markets","")
+    is_admin = role == "admin"
+    is_editor = role == "editor"
+
+    # For country users, limit markets to their allowed list
+    if role == "country" and user_markets != "ALL":
+        visible_markets = [m.strip() for m in user_markets.split(",")]
+    else:
+        visible_markets = MARKETS
+
     return render_template("app.html",
-        user=session["user"],
-        is_admin=(session["user"] == ADMIN_MARKET),
-        markets=MARKETS, quarters=QUARTERS
+        user=session.get("display_name", session["username"]),
+        username=session["username"],
+        is_admin=is_admin,
+        is_editor=is_editor,
+        role=role,
+        markets=visible_markets, quarters=QUARTERS
     )
 
 @app.route("/login", methods=["POST"])
 def login():
-    market = request.form.get("market","").strip()
-    if market in MARKETS + [ADMIN_MARKET]:
-        session["user"] = market
+    username = request.form.get("username","").strip()
+    password = request.form.get("password","").strip()
+
+    if not username or not password:
+        users = _get_all_users()
+        user_list = [{"username":u.get("username",""), "display_name":u.get("display_name","")} for u in users]
+        return render_template("login.html", users=user_list, markets=MARKETS, error="Enter username and password")
+
+    user = _get_user(username)
+    if not user or not check_password_hash(str(user.get("password_hash","")), password):
+        users = _get_all_users()
+        user_list = [{"username":u.get("username",""), "display_name":u.get("display_name","")} for u in users]
+        return render_template("login.html", users=user_list, markets=MARKETS, error="Invalid password")
+
+    session["username"] = user["username"]
+    session["display_name"] = user.get("display_name", user["username"])
+    session["role"] = user.get("role", "country")
+    session["markets"] = user.get("markets", "ALL")
+    # Keep backward compat — set "user" for existing code that checks it
+    session["user"] = "APAC" if user.get("role") == "admin" else user.get("markets","").split(",")[0]
     return redirect("/")
 
 @app.route("/logout")
@@ -548,6 +638,75 @@ def api_import_vendors():
         import traceback; traceback.print_exc()
         return jsonify({"error": f"Import failed: {str(e)}"}), 500
 
+# ── USERS API ────────────────────────────────────────────────
+@app.route("/api/users")
+@require_login
+@require_admin
+def api_get_users():
+    users = _get_all_users()
+    return jsonify([{
+        "username": u.get("username",""),
+        "display_name": u.get("display_name",""),
+        "role": u.get("role","country"),
+        "markets": u.get("markets",""),
+    } for u in users])
+
+@app.route("/api/users", methods=["POST"])
+@require_login
+@require_admin
+def api_add_user():
+    d = request.get_json()
+    uname = d.get("username","").strip().lower()
+    pwd = d.get("password","").strip()
+    display = d.get("display_name","").strip() or uname
+    role = d.get("role","country")
+    markets = d.get("markets","ALL")
+    if not uname or not pwd:
+        return jsonify({"error":"Username and password required"}), 400
+    if _get_user(uname):
+        return jsonify({"error":"Username already exists"}), 400
+    now = datetime.utcnow().isoformat()
+    get_sheet(TAB_USERS).append_row([uname, generate_password_hash(pwd), display, role, markets, now])
+    invalidate_cache(TAB_USERS)
+    return jsonify({"ok":True, "username":uname})
+
+@app.route("/api/users/<username>", methods=["PUT"])
+@require_login
+@require_admin
+def api_update_user(username):
+    d = request.get_json()
+    ws = get_sheet(TAB_USERS)
+    rows = safe_get_records(ws, TAB_USERS)
+    idx = next((i for i,r in enumerate(rows) if str(r.get("username","")).lower()==username.lower()), None)
+    if idx is None: return jsonify({"error":"Not found"}), 404
+    r = rows[idx]
+    new_pwd = d.get("password","").strip()
+    pwd_hash = generate_password_hash(new_pwd) if new_pwd else r.get("password_hash","")
+    ws.update(f"A{idx+2}:F{idx+2}", [[
+        r["username"],
+        pwd_hash,
+        d.get("display_name", r.get("display_name","")),
+        d.get("role", r.get("role","country")),
+        d.get("markets", r.get("markets","")),
+        r.get("created_at",""),
+    ]])
+    invalidate_cache(TAB_USERS)
+    return jsonify({"ok":True})
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+@require_login
+@require_admin
+def api_delete_user(username):
+    if username.lower() == session.get("username","").lower():
+        return jsonify({"error":"Cannot delete yourself"}), 400
+    ws = get_sheet(TAB_USERS)
+    rows = safe_get_records(ws, TAB_USERS)
+    idx = next((i for i,r in enumerate(rows) if str(r.get("username","")).lower()==username.lower()), None)
+    if idx is None: return jsonify({"error":"Not found"}), 404
+    ws.delete_rows(idx+2)
+    invalidate_cache(TAB_USERS)
+    return jsonify({"ok":True})
+
 @app.route("/api/budget/<country>/<quarter>", methods=["POST"])
 @require_login
 @require_admin
@@ -672,7 +831,7 @@ def api_add_entry():
             str(d.get("approved", False)),
             json.dumps(inv_names),
             json.dumps(stored_files),
-            session["user"], now, now
+            session.get("username", session.get("user","")), now, now
         ])
         invalidate_cache(TAB_ENTRIES)
         return jsonify({"id":entry_id,"ok":True})
@@ -1111,8 +1270,10 @@ def api_budget_summary():
 # ── RECONCILIATION ───────────────────────────────────────────
 @app.route("/api/reconciliation/<quarter>")
 @require_login
-@require_admin
 def api_reconciliation(quarter):
+    # Admin and editors can view reconciliation
+    if session.get("role") not in ("admin", "editor"):
+        return jsonify({"error":"Access denied"}), 403
     """
     Full hierarchy reconciliation using rows_for_cached (same filtering as dashboard).
     """
@@ -1399,9 +1560,12 @@ def api_export_xlsx():
     return response
 
 if __name__ == "__main__":
-    # Auto-fix missing columns on startup
     try:
         _ensure_entry_headers()
     except Exception as e:
         print(f"[STARTUP] Migration check failed: {e}")
+    try:
+        _seed_users()
+    except Exception as e:
+        print(f"[STARTUP] User seed failed: {e}")
     app.run(debug=True, port=5000)
