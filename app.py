@@ -119,6 +119,12 @@ DEFAULT_MAPPING = [
     ("amf1",         "Marketing : Partners - 613000022XXX",              "AMF1 Activation",      "AMF1"),
 ]
 
+def safe_float(val):
+    try:
+        return float(val or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
 # ── SHEETS HELPERS ────────────────────────────────────────────
 # In-memory cache — reduces Sheets API calls significantly
 import time
@@ -135,7 +141,12 @@ def get_gc():
     now = time.time()
     if _gc is None or (now - _gc_ts) > _GC_TTL:
         try:
-            creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+            raw = os.environ.get("GOOGLE_CREDS_JSON")
+            if raw:
+                info = json.loads(raw)
+                creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+            else:
+                creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
             _gc = gspread.authorize(creds)
             _gc_ts = now
         except Exception as e:
@@ -404,7 +415,7 @@ def logout():
     return redirect("/")
 
 # ── BUDGET API ────────────────────────────────────────────────
-@app.route("/api/budget/<country>/<quarter>")
+@app.route("/api/budget/<quarter>/<path:country>")
 @require_login
 def api_get_budget(country, quarter):
     if not check_country_access(country):
@@ -705,7 +716,7 @@ def api_delete_user(username):
     invalidate_cache(TAB_USERS)
     return jsonify({"ok":True})
 
-@app.route("/api/budget/<country>/<quarter>", methods=["POST"])
+@app.route("/api/budget/<quarter>/<path:country>", methods=["POST"])
 @require_login
 @require_admin
 def api_save_budget(country, quarter):
@@ -767,7 +778,7 @@ def api_delete_channel(ch_id):
     return jsonify({"ok":True})
 
 # ── ENTRIES API ───────────────────────────────────────────────
-@app.route("/api/entries/<country>/<quarter>")
+@app.route("/api/entries/<quarter>/<path:country>")
 @require_login
 def api_get_entries(country, quarter):
     if not check_country_access(country):
@@ -782,9 +793,9 @@ def api_get_entries(country, quarter):
                 "bu": r["bu"], "finance_cat": r["finance_cat"], "marketing_cat": r["marketing_cat"],
                 "activity_id": r.get("activity_id",""), "activity_name": r.get("activity_name",""),
                 "description": r["description"],
-                "planned":   float(r["planned"]   or 0),
-                "confirmed": float(r["confirmed"] or 0),
-                "actual":    float(r["actual"]    or 0),
+                "planned":   safe_float(r.get("planned")),
+                "confirmed": safe_float(r.get("confirmed")),
+                "actual":    safe_float(r.get("actual")),
                 "jira": r["jira"], "vendor": r["vendor"], "notes": r["notes"],
                 "approved": str(r["approved"]).lower() == "true",
                 "invoice_names": json.loads(r["invoice_names"]) if r.get("invoice_names") else [],

@@ -319,8 +319,8 @@ async function loadData(force=false){
     return;
   }
   const [b,e] = await Promise.all([
-    api(`/api/budget/${country}/${quarter}`),
-    api(`/api/entries/${country}/${quarter}`)
+    api(`/api/budget/${quarter}/${country}`),
+    api(`/api/entries/${quarter}/${country}`)
   ]);
   budgetData = b; entries = e;
   _cache = { budget:b, entries:e, cacheKey:key };
@@ -1002,7 +1002,7 @@ async function deleteAct(id){
 async function renderCfg(){
   g('page').innerHTML='<div class="spinner"></div>';
   try{
-    budgetData = await api(`/api/budget/${country}/${quarter}`);
+    budgetData = await api(`/api/budget/${quarter}/${country}`);
     _cache.budget = budgetData;
     _cache.cacheKey = cacheKey();
     let mappingRows=[];
@@ -1306,7 +1306,7 @@ async function saveTot(){
   _cache.budget=budgetData;
   toast('Budget saved ✓','ok');
   rebuildOverviewCard();
-  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).then(()=>loadBudgetOverview()).catch(()=>toast('Sync error','err'));
+  api(`/api/budget/${quarter}/${country}`,{method:'POST',body:JSON.stringify({total})}).then(()=>loadBudgetOverview()).catch(()=>toast('Sync error','err'));
 }
 
 function openCM(id,name,budget){
@@ -1449,7 +1449,7 @@ function importBudgetFile(inp){
 // Partial refresh: reload budget data and update only the channel list section
 async function refreshCfgChannels(){
   try{
-    const data = await api(`/api/budget/${country}/${quarter}`);
+    const data = await api(`/api/budget/${quarter}/${country}`);
     budgetData = data;
     _cache.budget = data;
     _cache.cacheKey = cacheKey();
@@ -1489,7 +1489,7 @@ async function refreshCfgChannels(){
 // Partial refresh: reload budget total and update overview card + input
 async function refreshCfgBudgetTotal(){
   try{
-    const data = await api(`/api/budget/${country}/${quarter}`);
+    const data = await api(`/api/budget/${quarter}/${country}`);
     budgetData = data;
     _cache.budget = data;
     _cache.cacheKey = cacheKey();
