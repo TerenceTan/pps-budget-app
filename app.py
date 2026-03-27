@@ -452,7 +452,6 @@ def _seed_mapping():
 # ── ACTIVITIES API ────────────────────────────────────────────
 @app.route("/api/activities", methods=["POST"])
 @require_login
-@require_admin
 def api_add_activity():
     d = request.get_json()
     existing = rows_for(TAB_ACTIVITIES, channel_id=d["channel_id"])
@@ -480,7 +479,6 @@ def api_update_activity(act_id):
 
 @app.route("/api/activities/<act_id>", methods=["DELETE"])
 @require_login
-@require_admin
 def api_delete_activity(act_id):
     ws = get_sheet(TAB_ACTIVITIES)
     rows = safe_get_records(ws, TAB_ACTIVITIES)
