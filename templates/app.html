@@ -4,6 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>APAC Budget Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
   --bg:#f2f0eb;--s:#fff;--s2:#f7f5f1;--s3:#edeae3;
@@ -22,8 +23,6 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--t);font-size
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--bm);border-radius:99px}
 input,select,textarea,button{font-family:'Sora',sans-serif}
 .mono{font-family:'DM Mono',monospace}
-
-/* topbar */
 #topbar{background:var(--s);border-bottom:1px solid var(--b);height:50px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
 .brand{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--t3);text-transform:uppercase}
 .brand-dot{width:6px;height:6px;background:var(--ac);border-radius:50%}
@@ -35,11 +34,7 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .av{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;flex-shrink:0}
 .av.adm{background:var(--go)}
 .btn-logout{background:transparent;color:var(--t2);border:1px solid var(--b);padding:5px 10px;border-radius:var(--r);font-size:12px;cursor:pointer}.btn-logout:hover{background:var(--s2)}
-
-/* page */
-#page{padding:18px 20px;max-width:1100px;margin:0 auto}
-
-/* buttons */
+#page{padding:18px 20px;max-width:1200px;margin:0 auto}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 15px;border-radius:var(--r);font-family:'Sora',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .14s;white-space:nowrap;line-height:1;text-decoration:none}
 .btn:active{transform:scale(.97)}.btn:disabled{opacity:.45;cursor:not-allowed}
 .btn-p{background:var(--ac);color:#fff;border-color:var(--ac)}.btn-p:hover:not(:disabled){background:var(--ach)}
@@ -47,8 +42,6 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .btn-d{background:var(--dab);color:var(--da);border-color:var(--dabr)}.btn-d:hover{background:#fde0e0}
 .btn-e{background:var(--gob);color:var(--go);border-color:var(--gobr)}.btn-e:hover{background:#f5edca}
 .btn-sm{padding:5px 10px;font-size:12px}.btn-xs{padding:4px 8px;font-size:11px}
-
-/* form */
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.07em;text-transform:uppercase}
 .req{color:var(--da);margin-left:2px}
@@ -62,22 +55,14 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .sdiv{display:flex;align-items:center;gap:8px;margin:14px 0 10px}
 .sdiv span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);white-space:nowrap}
 .sdiv::before,.sdiv::after{content:'';flex:1;height:1px;background:var(--b)}
-
-/* card */
 .card{background:var(--s);border:1px solid var(--b);border-radius:var(--rlg)}
-
-/* budget bar */
 .bbar-wrap{height:5px;background:var(--s3);border-radius:99px;overflow:hidden;margin-top:4px}
 .bbar{height:100%;border-radius:99px;transition:width .3s}
-
-/* badges */
 .badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace}
 .b-gray{background:var(--s3);color:var(--t2)}.b-green{background:var(--sub);color:var(--su)}
 .b-amber{background:var(--wab);color:var(--wa)}.b-red{background:var(--dab);color:var(--da)}
 .b-teal{background:var(--acb);color:var(--ac)}.b-blue{background:var(--inb);color:var(--in)}
 .b-gold{background:var(--gob);color:var(--go)}
-
-/* modal */
 .overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,9,5,.46);align-items:flex-start;justify-content:center;padding:44px 16px 24px;overflow-y:auto;opacity:0;transition:opacity .18s}
 .overlay.open{display:flex;opacity:1}
 .modal{background:var(--s);border-radius:var(--rxl);border:1px solid var(--b);width:100%;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,.13);transform:translateY(12px);transition:transform .2s ease-out}
@@ -87,25 +72,17 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .mclose{background:none;border:none;cursor:pointer;color:var(--t3);font-size:17px;padding:3px 5px;border-radius:4px;line-height:1}.mclose:hover{background:var(--s2);color:var(--t)}
 .mbody{padding:18px 22px}.mfoot{padding:14px 22px;border-top:1px solid var(--b);display:flex;justify-content:flex-end;gap:8px}
 .mfoot.spread{justify-content:space-between}
-
-/* toggle */
 .toggle-track{position:relative;width:36px;height:20px;border-radius:10px;background:var(--s3);cursor:pointer;transition:background .2s;flex-shrink:0}
 .toggle-track.on{background:var(--su)}.toggle-track.disabled{cursor:not-allowed;opacity:.45}
 .toggle-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s}
 .toggle-track.on .toggle-knob{left:18px}
-
-/* qtabs */
 .qtabs{display:flex;gap:4px}
 .qtab{padding:5px 12px;border-radius:var(--r);border:1px solid var(--b);background:var(--s);color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;transition:all .14s}
 .qtab:hover{background:var(--s2)}.qtab.active{background:var(--ac);color:#fff;border-color:var(--ac)}
-
-/* stats */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:9px;margin-bottom:14px}
 .stat{background:var(--s);border:1px solid var(--b);border-radius:var(--r);padding:12px 14px}
 .stat-l{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
 .stat-v{font-family:'DM Mono',monospace;font-size:20px;font-weight:500;line-height:1}
-
-/* channel cards */
 .ch-card{border-radius:var(--rlg);border:1px solid var(--b);background:var(--s);overflow:hidden;margin-bottom:10px}
 .ch-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none;transition:background .14s}
 .ch-head:hover{background:var(--s2)}
@@ -113,15 +90,11 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .ch-info{flex:1;min-width:0}
 .ch-name{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
 .ch-body{border-top:1px solid var(--b);background:var(--s2)}
-
-/* activity cards (nested inside channel) */
 .act-card{margin:8px 12px;border-radius:var(--r);border:1px solid var(--b);background:var(--s);overflow:hidden}
 .act-head{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;user-select:none;transition:background .14s}
 .act-head:hover{background:var(--s2)}
 .act-name{font-weight:500;font-size:12.5px;display:flex;align-items:center;gap:7px;flex:1}
 .act-body{border-top:1px solid var(--b)}
-
-/* table */
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 thead tr{background:var(--s2)}
@@ -130,30 +103,34 @@ td{padding:9px 11px;border-bottom:1px solid var(--b);vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover td{background:var(--s2)}
 tfoot td{background:var(--s2);font-weight:600;font-size:12px}
-
-/* invoice */
 .inv-row{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--s2);border:1px solid var(--b);border-radius:var(--r);font-size:12px;margin-bottom:6px}
 .inv-link{color:var(--in);text-decoration:underline;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inv-rm{background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px;line-height:1;padding:2px}.inv-rm:hover{color:var(--da)}
 .inv-drop{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);border:2px dashed var(--b);font-size:13px;color:var(--t3);cursor:pointer;transition:all .14s}
 .inv-drop:hover{border-color:var(--ac);background:var(--acb);color:var(--ac)}
-
-/* warn banner */
 .warn-banner{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r);background:var(--dab);color:var(--da);font-size:12.5px;margin-bottom:12px}
-
-/* spinner */
 .spinner{width:28px;height:28px;border:2.5px solid var(--b);border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite;margin:48px auto}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* toast */
 #toast{position:fixed;bottom:20px;right:20px;z-index:999;padding:11px 16px;border-radius:var(--r);font-size:13px;font-weight:500;transform:translateY(60px);opacity:0;transition:all .22s cubic-bezier(.34,1.2,.64,1);pointer-events:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
 #toast.show{transform:translateY(0);opacity:1}
 #toast.ok{background:var(--ac);color:#fff}#toast.err{background:var(--da);color:#fff}#toast.info{background:var(--t);color:#fff}
-
-/* config rows */
 .cfg-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b);border-radius:var(--r);margin-bottom:7px}
-
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.chart-card{background:var(--s);border:1px solid var(--b);border-radius:var(--rlg);padding:16px}
+.chart-card h3{font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px}
+.chart-card canvas{width:100%!important;max-height:280px}
+@media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.fg2,.fg3{grid-template-columns:1fr}#page{padding:12px}}
+.dd-filter{position:relative;display:inline-block}
+.dd-btn{display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--b);border-radius:var(--r);background:var(--s);font-size:11px;cursor:pointer;color:var(--t2);white-space:nowrap;min-width:90px;user-select:none}
+.dd-btn:hover{background:var(--s2);border-color:var(--bm)}
+.dd-btn .dd-count{background:var(--ac);color:#fff;font-size:9px;padding:1px 5px;border-radius:9px;font-weight:600;margin-left:2px}
+.dd-panel{display:none;position:absolute;top:100%;left:0;margin-top:4px;background:var(--s);border:1px solid var(--b);border-radius:var(--rlg);box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:50;min-width:160px;max-height:240px;overflow-y:auto;padding:6px 0}
+.dd-panel.open{display:block}
+.dd-item{display:flex;align-items:center;gap:7px;padding:5px 12px;font-size:11.5px;cursor:pointer;transition:background .1s}
+.dd-item:hover{background:var(--s2)}
+.dd-item input[type=checkbox]{accent-color:var(--ac);margin:0;cursor:pointer}
+.dd-item label{cursor:pointer;flex:1;user-select:none}
 </style>
 </head>
 <body>
@@ -161,7 +138,7 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
 <div id="topbar">
   <div class="tb-l">
     <div class="brand"><span class="brand-dot"></span>APAC Budget Tracker</div>
-    <nav id="nav" style="display:flex;align-items:center;gap:8px"></nav>
+    <nav id="nav" style="display:flex;align-items:center;gap:4px;margin-left:12px;flex-wrap:wrap"></nav>
   </div>
   <div class="tb-r">
     <div class="chip {{ 'admin' if is_admin else '' }}">
@@ -227,17 +204,20 @@ const MONTHS  = [
   {v:"2026-01",l:"Jan 2026",q:"Q3"},{v:"2026-02",l:"Feb 2026",q:"Q3"},{v:"2026-03",l:"Mar 2026",q:"Q3"},
   {v:"2026-04",l:"Apr 2026",q:"Q4"},{v:"2026-05",l:"May 2026",q:"Q4"},{v:"2026-06",l:"Jun 2026",q:"Q4"},
 ];
-const BU_LIST = ["Marketing : Programmatic - 613000009XXX","Marketing : Affiliate - 613000002XXX","Marketing : Paid Social / YouTube - 613000004XXX","Marketing : Local Brand - 613000024XXX","Marketing : Premium - 613000019XXX","Marketing : Partners - 613000022XXX","Marketing : Marketing technology","Marketing - Refer a friend - 613000003XXX","AMF1"];
-const FIN_CATS= ["Affiliate","PPC","PMAX","Programmatic","Bing","Paid Social-Meta","Paid Social-Twitter","Paid Social-Youtube","Paid Social-Douyin","Paid Social-Weibo","Paid Social-Rednote","Paid Social-Wechat","Paid Social-KOC","Baidu-Display","Baidu-PPC","Event","Local Direct Deals","Influencer/KOL","Local SEO","Campaigns/Promotions","Partner","Premium","RAF","AMF1 Race Tickets","AMF1 Activation","Marketing Technology","Education (Internal)"];
-const MKT_CATS= ["Affiliate- CPA & FF","PPC / Search","Programmatic","Paid Social","YouTube","Display","Influencer / KOL","Events & Sponsorship","Premium Partners","SEO","Email / CRM","Brand / OOH","Content","Technology","AMF1","Refer a Friend","Other"];
 
-// ── STATE ──────────────────────────────────────────────────────
+// Dynamic categories (loaded from server)
+let BU_LIST = [];
+let FIN_CATS = [];
+let MKT_CATS = [];
+
+const SBG=`background:var(--s);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9487' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center`;
+
 let view='dashboard', country=MARKETS[0]||'TH', quarter='Q1';
 let budgetData={total:0,channels:[],mapping:[]}, entries=[];
 let editEntryId=null, delEntryId=null, editChanId=null, editActId=null, actChanId=null;
 let pendingInvs=[], existInvNames=[], approveState=false;
+let _chartInstances = {};
 
-// ── UTILS ──────────────────────────────────────────────────────
 const fmt  = n => Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0});
 const pct  = (u,t) => t>0 ? Math.min(100,Math.round(u/t*100)) : 0;
 const mLbl = v => (MONTHS.find(m=>m.v===v)||{}).l || v || '—';
@@ -246,30 +226,73 @@ const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 const g    = id => document.getElementById(id);
 const gv   = id => g(id)?.value?.trim()||'';
 const sel  = (arr,val) => arr.map(a=>`<option value="${esc(a)}" ${a===val?'selected':''}>${esc(a)}</option>`).join('');
-const SBG  = `background:var(--s);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9487' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center`;
 
 function toast(m,t='info'){const el=g('toast');el.textContent=m;el.className=`show ${t}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className='',2700)}
 
+// Dropdown checkbox filter helper
+function ddFilter(id, label, options, onChange){
+  const uid=id+'_dd';
+  let html='<div class="dd-filter" id="'+uid+'">';
+  html+='<div class="dd-btn" onclick="ddToggle(\''+uid+'\')"><span>'+esc(label)+'</span><span class="dd-count" id="'+uid+'_c" style="display:none">0</span><span style="margin-left:auto;font-size:8px;color:var(--t3)">&#x25BC;</span></div>';
+  html+='<div class="dd-panel" id="'+uid+'_p">';
+  options.forEach(function(o,i){
+    html+='<div class="dd-item"><input type="checkbox" id="'+uid+'_'+i+'" value="'+esc(o)+'" onchange="ddChange(\''+uid+'\')"><label for="'+uid+'_'+i+'">'+esc(o)+'</label></div>';
+  });
+  html+='</div></div>';
+  window['_ddCb_'+uid]=onChange;
+  return html;
+}
+function ddToggle(uid){
+  // close all others first
+  document.querySelectorAll('.dd-panel.open').forEach(function(p){if(p.id!==uid+'_p')p.classList.remove('open')});
+  g(uid+'_p')?.classList.toggle('open');
+}
+function ddChange(uid){
+  const checks=[...document.querySelectorAll('#'+uid+'_p input:checked')].map(function(c){return c.value});
+  const badge=g(uid+'_c');
+  if(badge){badge.textContent=checks.length;badge.style.display=checks.length>0?'':'none';}
+  if(window['_ddCb_'+uid]) window['_ddCb_'+uid](checks);
+}
+function ddGetValues(uid){
+  return [...document.querySelectorAll('#'+uid+'_p input:checked')].map(function(c){return c.value});
+}
+function ddClearAll(){
+  document.querySelectorAll('.dd-panel input:checked').forEach(function(c){c.checked=false});
+  document.querySelectorAll('.dd-count').forEach(function(b){b.style.display='none';b.textContent='0'});
+}
+// Close dropdowns on outside click
+document.addEventListener('click',function(e){if(!e.target.closest('.dd-filter'))document.querySelectorAll('.dd-panel.open').forEach(function(p){p.classList.remove('open')})});
+
 async function api(url,opts={}){
   const headers = opts.headers || {};
-  // Only set JSON content-type when sending a body
-  if(opts.body && !headers['Content-Type']){
-    headers['Content-Type'] = 'application/json';
-  }
+  if(opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   const r = await fetch(url, {...opts, headers});
   const ct = r.headers.get('content-type')||'';
   if(!ct.includes('application/json')){
-    // Flask returned HTML (error page) — extract useful info
     const text = await r.text();
-    const match = text.match(/<title>(.*?)<\/title>/i) || text.match(/Error.*?:\s*(.+?)[\n<]/);
-    throw new Error(`Server error ${r.status}: ${match?match[1]:'check Flask terminal for details'}`);
+    const match = text.match(/<title>(.*?)<\/title>/i);
+    throw new Error(`Server error ${r.status}: ${match?match[1]:'check Flask terminal'}`);
   }
   const d = await r.json();
   if(!r.ok) throw new Error(d.error||`Error ${r.status}`);
   return d;
 }
 
-// ── MAPPING AUTO-FILL ──────────────────────────────────────────
+// Load categories from server
+async function loadCategories(){
+  try{
+    const cats = await api('/api/categories');
+    if(cats.bu) BU_LIST = (Array.isArray(cats.bu) ? cats.bu.map(c=>typeof c==='string'?c:c.value) : cats.bu);
+    if(cats.finance) FIN_CATS = (Array.isArray(cats.finance) ? cats.finance.map(c=>typeof c==='string'?c:c.value) : cats.finance);
+    if(cats.marketing) MKT_CATS = (Array.isArray(cats.marketing) ? cats.marketing.map(c=>typeof c==='string'?c:c.value) : cats.marketing);
+  }catch(e){
+    // Fallback defaults
+    BU_LIST=["Marketing : Programmatic - 613000009XXX","Marketing : Affiliate - 613000002XXX","Marketing : Paid Social / YouTube - 613000004XXX","Marketing : Local Brand - 613000024XXX","Marketing : Premium - 613000019XXX","Marketing : Partners - 613000022XXX","Marketing : Marketing technology","Marketing - Refer a friend - 613000003XXX","AMF1"];
+    FIN_CATS=["Affiliate","PPC","PMAX","Programmatic","Bing","Paid Social-Meta","Paid Social-Twitter","Paid Social-Youtube","Paid Social-Douyin","Paid Social-Weibo","Paid Social-Rednote","Paid Social-Wechat","Paid Social-KOC","Baidu-Display","Baidu-PPC","Event","Local Direct Deals","Influencer/KOL","Local SEO","Campaigns/Promotions","Partner","Premium","RAF","AMF1 Race Tickets","AMF1 Activation","Marketing Technology","Education (Internal)"];
+    MKT_CATS=["Affiliate- CPA & FF","PPC / Search","Programmatic","Paid Social","YouTube","Display","Influencer / KOL","Events & Sponsorship","Premium Partners","SEO","Email / CRM","Brand / OOH","Content","Technology","AMF1","Refer a Friend","Other"];
+  }
+}
+
 function applyMapping(name){
   if(!name) return;
   const lower=name.toLowerCase();
@@ -285,95 +308,70 @@ function applyMapping(name){
   if(mc&&!mc.value) mc.value=match.marketing_cat;
 }
 
-// ── NAV ────────────────────────────────────────────────────────
+// ── NAV ──────────────────────────────────────────────────────
 function initNav(){
   g('nav').innerHTML=`
     <button class="nav-btn active" id="nav-dash" onclick="sv('dashboard')">&#x1F4CA; Dashboard</button>
     ${(ROLE!=='country')?`<button class="nav-btn" id="nav-recon" onclick="sv('recon')">&#x2696; Reconciliation</button>`:''}
-    ${IS_ADMIN?`<button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Budget Config</button>`:''}`;
+    ${IS_ADMIN?`<button class="nav-btn" id="nav-pm" onclick="sv('pm')">&#x1F517; PM Sync</button>`:''}
+    ${IS_ADMIN?`<button class="nav-btn" id="nav-cfg" onclick="sv('config')">&#x2699; Config</button>`:''}
+    <button class="nav-btn" id="nav-analytics" onclick="sv('analytics')">&#x1F4C8; Analytics</button>`;
 }
 function sv(v){
   view=v;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  const map={dashboard:'nav-dash',config:'nav-cfg',recon:'nav-recon'};
+  const map={dashboard:'nav-dash',config:'nav-cfg',recon:'nav-recon',analytics:'nav-analytics',pm:'nav-pm'};
   g(map[v])?.classList.add('active');
   render();
 }
 function render(){
+  // Destroy existing charts
+  Object.values(_chartInstances).forEach(c=>{try{c.destroy()}catch(e){}});
+  _chartInstances={};
   if(view==='dashboard') renderDash();
+  else if(view==='analytics') renderAnalytics();
   else if(view==='recon') renderRecon();
+  else if(view==='pm') renderPM();
   else renderCfg();
 }
 
-// ── DATA CACHE ─────────────────────────────────────────────────
-// Load once, update locally — no full reload after every action
+// ── DATA CACHE ──────────────────────────────────────────────
 let _cache = { budget: null, entries: null, cacheKey: null };
-
 function cacheKey(){ return `${country}|${quarter}`; }
-
 async function loadData(force=false){
   const key = cacheKey();
   if(!force && _cache.cacheKey===key && _cache.budget && _cache.entries!==null){
-    budgetData = _cache.budget;
-    entries    = _cache.entries;
-    return;
+    budgetData = _cache.budget; entries = _cache.entries; return;
   }
-  const [b,e] = await Promise.all([
-    api(`/api/budget/${country}/${quarter}`),
-    api(`/api/entries/${country}/${quarter}`)
-  ]);
+  const [b,e] = await Promise.all([api(`/api/budget/${country}/${quarter}`), api(`/api/entries/${country}/${quarter}`)]);
   budgetData = b; entries = e;
   _cache = { budget:b, entries:e, cacheKey:key };
 }
-
 function invalidateCache(){ _cache.cacheKey = null; }
 
-// Re-render from current state without hitting the server
-function rerender(){
-  const page = g('page');
-  if(!page) return;
-  // Preserve open accordion state
-  const openCh  = [...document.querySelectorAll('[id^="chb-"]')].filter(el=>el.style.display==='block').map(el=>el.id.replace('chb-',''));
-  const openAct = [...document.querySelectorAll('[id^="actb-"]')].filter(el=>el.style.display==='block').map(el=>el.id.replace('actb-',''));
-  page.innerHTML = buildDash();
-  // Restore open state
-  openCh.forEach(id=>{ const b=g(`chb-${id}`),v=g(`chev-${id}`); if(b){b.style.display='block';if(v)v.style.transform='rotate(90deg)';} });
-  openAct.forEach(id=>{ const b=g(`actb-${id}`),v=g(`achev-${id}`); if(b){b.style.display='block';if(v)v.style.transform='rotate(90deg)';} });
-}
-
-// ── DASHBOARD ──────────────────────────────────────────────────
+// ===================================================================
+// DASHBOARD (simplified — keeping core functionality from original)
+// ===================================================================
 async function renderDash(){
-  // Show spinner only on first load or country/quarter change
   const key = cacheKey();
-  if(_cache.cacheKey !== key){
-    g('page').innerHTML='<div class="spinner"></div>';
-  }
+  if(_cache.cacheKey !== key) g('page').innerHTML='<div class="spinner"></div>';
   try{
     await loadData();
     g('page').innerHTML = buildDash();
   }catch(e){
-    g('page').innerHTML=`<div style="padding:24px;max-width:600px">
-      <div style="background:var(--dab);border:1px solid var(--dabr);border-radius:var(--r);padding:16px">
-        <div style="font-weight:600;color:var(--da);margin-bottom:6px">&#x26A0; Failed to load dashboard</div>
-        <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">${esc(e.message)}</div>
-        <div style="font-size:11.5px;color:var(--t3)">Check your Flask terminal for the full error. Common causes: Google Sheets credentials, missing tabs, or a Python error in app.py.</div>
-      </div>
-      <button class="btn btn-g btn-sm" style="margin-top:12px" onclick="invalidateCache();renderDash()">&#x21BA; Retry</button>
-    </div>`;
+    g('page').innerHTML=`<div style="padding:24px"><div style="background:var(--dab);border:1px solid var(--dabr);border-radius:var(--r);padding:16px"><div style="font-weight:600;color:var(--da)">Failed to load</div><div style="font-size:12px;color:var(--t2);margin-top:4px">${esc(e.message)}</div></div><button class="btn btn-g btn-sm" style="margin-top:12px" onclick="invalidateCache();renderDash()">Retry</button></div>`;
   }
 }
 
 function buildDash(){
-  const totAct = entries.reduce((s,e)=>s+(e.actual||0),0);
-  const totPln = entries.reduce((s,e)=>s+(e.planned||0),0);
-  const totCon = entries.reduce((s,e)=>s+(e.confirmed||0),0);
-  const rem    = (budgetData.total||0) - totAct;
-  const hasCfg = budgetData.total>0 || budgetData.channels.length>0;
-  const p      = pct(totAct, budgetData.total);
-  const varPA  = totAct - totPln;
+  const totAct=entries.reduce((s,e)=>s+(e.actual||0),0);
+  const totPln=entries.reduce((s,e)=>s+(e.planned||0),0);
+  const totCon=entries.reduce((s,e)=>s+(e.confirmed||0),0);
+  const rem=(budgetData.total||0)-totAct;
+  const p=pct(totAct,budgetData.total);
+  const varPA=totAct-totPln;
 
-  // ── toolbar ──
-  let tb = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  let tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
   if(ROLE!=='country') tb+=`<select onchange="country=this.value;renderDash()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>`;
   else tb+=`<span style="font-weight:600;font-size:13px;padding:6px 0">${country}</span>`;
@@ -385,171 +383,92 @@ function buildDash(){
     </div>
   </div>`;
 
-  // ── 3-stage budget summary card ──
-  let bc='';
-  if(hasCfg){
-    const varClr = varPA===0?'var(--su)':varPA>0?'var(--da)':'var(--su)';
-    bc=`<div class="card" style="padding:16px;margin-bottom:14px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:4px">${country} &#xB7; ${quarter} Budget</div>
-          <div class="mono" style="font-size:26px;font-weight:500">$${fmt(budgetData.total)}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:right">
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Planned</div><div class="mono" style="color:var(--go);font-size:14px;font-weight:500">$${fmt(totPln)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Confirmed</div><div class="mono" style="color:var(--in);font-size:14px;font-weight:500">$${fmt(totCon)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Actual</div><div class="mono" style="color:var(--su);font-size:14px;font-weight:500">$${fmt(totAct)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Variance</div><div class="mono" style="color:${varClr};font-size:14px;font-weight:500">${varPA>0?'+':''}$${fmt(varPA)}</div></div>
-        </div>
+  const varClr=varPA===0?'var(--su)':varPA>0?'var(--da)':'var(--su)';
+  let bc=budgetData.total>0||budgetData.channels.length>0?`<div class="card" style="padding:16px;margin-bottom:14px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+      <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:4px">${country} · ${quarter} Budget</div>
+        <div class="mono" style="font-size:26px;font-weight:500">$${fmt(budgetData.total)}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:right">
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Planned</div><div class="mono" style="color:var(--go);font-size:14px">$${fmt(totPln)}</div></div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Confirmed</div><div class="mono" style="color:var(--in);font-size:14px">$${fmt(totCon)}</div></div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Actual</div><div class="mono" style="color:var(--su);font-size:14px">$${fmt(totAct)}</div></div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3);margin-bottom:3px">Variance</div><div class="mono" style="color:${varClr};font-size:14px">${varPA>0?'+':''}$${fmt(varPA)}</div></div>
       </div>
-      <div style="position:relative;height:8px;background:var(--s3);border-radius:99px;overflow:hidden;margin-bottom:4px">
-        <div style="position:absolute;height:100%;border-radius:99px;background:var(--go);opacity:.3;width:${pct(totPln,budgetData.total)}%"></div>
-        <div style="position:absolute;height:100%;border-radius:99px;background:var(--in);opacity:.4;width:${pct(totCon,budgetData.total)}%"></div>
-        <div style="position:absolute;height:100%;border-radius:99px;background:${bClr(totAct,budgetData.total)};width:${p}%"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:2px">
-        <span style="display:flex;gap:12px">
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--go);opacity:.5;vertical-align:middle;margin-right:3px"></span>Planned</span>
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--in);opacity:.6;vertical-align:middle;margin-right:3px"></span>Confirmed</span>
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--ac);vertical-align:middle;margin-right:3px"></span>Actual</span>
-        </span>
-        <span>${p}% spent · $${fmt(Math.max(0,rem))} remaining</span>
-      </div>
-    </div>`;
-  } else {
-    bc=`<div style="border-radius:var(--rlg);border:1px solid var(--wabr);padding:13px 16px;margin-bottom:14px;background:var(--wab);display:flex;align-items:center;gap:10px">
-      <span>&#x26A0;&#xFE0F;</span>
-      <div>
-        <div style="font-weight:600;color:var(--wa);font-size:13px">No budget configured for ${country} &#xB7; ${quarter}</div>
-        <div style="font-size:12px;color:var(--t2);margin-top:2px">${IS_ADMIN?'Go to <strong>Budget Config</strong> to set up.':'Contact your APAC admin — you can still log entries below.'}</div>
-      </div>
-    </div>`;
-  }
+    </div>
+    <div style="position:relative;height:8px;background:var(--s3);border-radius:99px;overflow:hidden;margin-bottom:4px">
+      <div style="position:absolute;height:100%;border-radius:99px;background:var(--go);opacity:.3;width:${pct(totPln,budgetData.total)}%"></div>
+      <div style="position:absolute;height:100%;border-radius:99px;background:${bClr(totAct,budgetData.total)};width:${p}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3)">${p}% spent · $${fmt(Math.max(0,rem))} remaining</div>
+  </div>`:'';
 
-  // ── channels + activities + entries ──
+  // Channel cards
   let chs='';
-
   if(budgetData.channels.length===0){
-    // No channels — flat table of all entries
-    chs = buildFlatTable(entries);
+    if(!entries.length) chs=`<div style="text-align:center;padding:40px;color:var(--t3)">No entries yet — click + Add Entry</div>`;
+    else chs=buildEntryTable(entries,true);
   } else {
     budgetData.channels.forEach(ch=>{
-      const chEntries = entries.filter(e=>e.channel_id===ch.id);
-      const chAct  = chEntries.reduce((s,e)=>s+(e.actual||0),0);
-      const chPln  = chEntries.reduce((s,e)=>s+(e.planned||0),0);
-      const chCon  = chEntries.reduce((s,e)=>s+(e.confirmed||0),0);
-      const over   = chAct>ch.budget && ch.budget>0;
-      const cp     = pct(chAct, ch.budget);
-      const chVar  = chAct - chPln;
-
-      // Activities for this channel
-      const acts = ch.activities||[];
-
-      // Entries not under any activity
-      const unactEntries = chEntries.filter(e=>!e.activity_id || !acts.find(a=>a.id===e.activity_id));
+      const chEntries=entries.filter(e=>e.channel_id===ch.id);
+      const chAct=chEntries.reduce((s,e)=>s+(e.actual||0),0);
+      const chPln=chEntries.reduce((s,e)=>s+(e.planned||0),0);
+      const cp=pct(chAct,ch.budget);
+      const over=chAct>ch.budget&&ch.budget>0;
+      const acts=ch.activities||[];
+      const unactEntries=chEntries.filter(e=>!e.activity_id||!acts.find(a=>a.id===e.activity_id));
 
       let actHtml='';
-
-      // Each activity as sub-accordion
       acts.forEach(act=>{
-        const aEntries = chEntries.filter(e=>e.activity_id===act.id);
-        const aAct = aEntries.reduce((s,e)=>s+(e.actual||0),0);
-        const aPln = aEntries.reduce((s,e)=>s+(e.planned||0),0);
-        const aCon = aEntries.reduce((s,e)=>s+(e.confirmed||0),0);
-        actHtml+=`<div class="act-card" id="act-${act.id}">
-          <div class="act-head" onclick="toggleAct('${act.id}')">
-            <div class="chev" id="achev-${act.id}">&#x25B6;</div>
-            <div class="act-name">
-              <span>${esc(act.name)}</span>
-              <span class="badge b-gray">${aEntries.length} entr${aEntries.length===1?'y':'ies'}</span>
-              <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(aPln)} · C:$${fmt(aCon)} · A:$${fmt(aAct)}</span>
-            </div>
-            <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
-              <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}','${act.id}')">+ Add</button>
-              ${(ROLE!=='country')?`<button class="btn btn-g btn-xs" onclick="openAM('${act.id}','${esc(act.name)}','${ch.id}')">&#x270E;</button>
-              <button class="btn btn-d btn-xs" onclick="deleteAct('${act.id}')">&#x2715;</button>`:''}
-            </div>
-          </div>
-          <div class="act-body" id="actb-${act.id}" style="display:none">
-            ${buildEntryTable(aEntries, false)}
-          </div>
-        </div>`;
+        const aEntries=chEntries.filter(e=>e.activity_id===act.id);
+        const aAct=aEntries.reduce((s,e)=>s+(e.actual||0),0);
+        const aPln=aEntries.reduce((s,e)=>s+(e.planned||0),0);
+        actHtml+=`<div class="act-card"><div class="act-head" onclick="toggleAct('${act.id}')">
+          <div class="chev" id="achev-${act.id}">&#x25B6;</div>
+          <div class="act-name"><span>${esc(act.name)}</span><span class="badge b-gray">${aEntries.length}</span>
+          <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(aPln)} · A:$${fmt(aAct)}</span></div>
+          <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
+            <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}','${act.id}')">+ Add</button>
+            ${(ROLE!=='country')?`<button class="btn btn-g btn-xs" onclick="openAM('${act.id}','${esc(act.name)}','${ch.id}')">&#x270E;</button><button class="btn btn-d btn-xs" onclick="deleteAct('${act.id}')">&#x2715;</button>`:''}
+          </div></div>
+          <div class="act-body" id="actb-${act.id}" style="display:none">${buildEntryTable(aEntries,false)}</div></div>`;
       });
 
-      // Unassigned entries inside channel (no activity)
-      let unassignedHtml='';
+      let unHtml='';
       if(unactEntries.length>0){
-        unassignedHtml=`<div class="act-card" style="border-style:dashed;margin:8px 12px">
-          <div class="act-head" onclick="toggleAct('unact-${ch.id}')">
-            <div class="chev" id="achev-unact-${ch.id}">&#x25B6;</div>
-            <div class="act-name"><span style="color:var(--t3);font-style:italic">Unassigned</span>
-              <span class="badge b-gray">${unactEntries.length}</span>
-            </div>
-          </div>
-          <div class="act-body" id="actb-unact-${ch.id}" style="display:none">
-            ${buildEntryTable(unactEntries, false)}
-          </div>
-        </div>`;
+        unHtml=`<div class="act-card" style="border-style:dashed;margin:8px 12px"><div class="act-head" onclick="toggleAct('unact-${ch.id}')">
+          <div class="chev" id="achev-unact-${ch.id}">&#x25B6;</div>
+          <div class="act-name"><span style="color:var(--t3);font-style:italic">Unassigned</span><span class="badge b-gray">${unactEntries.length}</span></div></div>
+          <div class="act-body" id="actb-unact-${ch.id}" style="display:none">${buildEntryTable(unactEntries,false)}</div></div>`;
       }
 
-      const varClr = chVar===0?'var(--su)':chVar>0?'var(--da)':'var(--su)';
-      chs+=`<div class="ch-card" id="ch-${ch.id}">
-        <div class="ch-head" onclick="toggleCh('${ch.id}')">
-          <div class="chev" id="chev-${ch.id}">&#x25B6;</div>
-          <div class="ch-info">
-            <div class="ch-name">
-              ${esc(ch.name)}
-              ${over?'<span style="color:var(--da);font-size:12px">&#x26A0; Over</span>':''}
-              <span class="badge ${over?'b-red':'b-teal'}">$${fmt(chAct)} / $${fmt(ch.budget)}</span>
-              <span style="font-size:11px;color:var(--t3)">${acts.length} activit${acts.length===1?'y':'ies'} · ${chEntries.length} entr${chEntries.length===1?'y':'ies'}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;margin-top:3px">
-              <div class="bbar-wrap" style="max-width:300px;flex:1"><div class="bbar" style="width:${cp}%;background:${bClr(chAct,ch.budget)}"></div></div>
-              <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(chPln)} · C:$${fmt(chCon)} · A:$${fmt(chAct)}</span>
-              ${chVar!==0?`<span class="mono" style="font-size:10px;color:${varClr}">${chVar>0?'+':''}$${fmt(chVar)}</span>`:''}
-            </div>
-          </div>
-          <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
-            ${(ROLE!=='country')?`<button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>`:''}
-            <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}',null)">+ Add</button>
-          </div>
-        </div>
-        <div id="chb-${ch.id}" style="display:none">
-          <div style="padding:8px 0 4px">${actHtml}${unassignedHtml}</div>
-          ${chEntries.length>0?`<div style="padding:6px 12px 10px;border-top:1px solid var(--b)">
-            <div style="font-size:11px;color:var(--t3);display:flex;justify-content:space-between;padding:4px 0">
-              <span>Channel Total</span>
-              <span class="mono" style="color:var(--go)">$${fmt(chPln)} planned &nbsp;·&nbsp; </span>
-              <span class="mono" style="color:var(--su)">$${fmt(chAct)} actual</span>
-            </div>
-          </div>`:''}
-        </div>
-      </div>`;
+      chs+=`<div class="ch-card"><div class="ch-head" onclick="toggleCh('${ch.id}')">
+        <div class="chev" id="chev-${ch.id}">&#x25B6;</div>
+        <div class="ch-info"><div class="ch-name">${esc(ch.name)}
+          ${over?'<span style="color:var(--da);font-size:12px">&#x26A0; Over</span>':''}
+          <span class="badge ${over?'b-red':'b-teal'}">$${fmt(chAct)} / $${fmt(ch.budget)}</span>
+          <span style="font-size:11px;color:var(--t3)">${acts.length} act. · ${chEntries.length} entries</span></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:3px">
+            <div class="bbar-wrap" style="max-width:300px;flex:1"><div class="bbar" style="width:${cp}%;background:${bClr(chAct,ch.budget)}"></div></div>
+            <span class="mono" style="font-size:10px;color:var(--t3)">P:$${fmt(chPln)} · A:$${fmt(chAct)}</span></div></div>
+        <div style="display:flex;gap:4px" onclick="event.stopPropagation()">
+          ${(ROLE!=='country')?`<button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>`:''}
+          <button class="btn btn-p btn-xs" onclick="openEM(null,'${ch.id}',null)">+ Add</button>
+        </div></div>
+        <div id="chb-${ch.id}" style="display:none"><div style="padding:8px 0 4px">${actHtml}${unHtml}</div></div></div>`;
     });
   }
-
   return tb + bc + chs;
 }
 
-function buildFlatTable(rows){
-  if(!rows.length) return `<div style="text-align:center;padding:40px;color:var(--t3)"><div style="font-weight:500;color:var(--t2);margin-bottom:4px">No entries yet</div><div style="font-size:12px">Click <strong>+ Add Entry</strong> to log your first spend item</div></div>`;
-  return `<div class="card" style="overflow:hidden">
-    <div style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:12px;font-weight:600;color:var(--t2)">All Entries <span style="color:var(--t3);font-weight:400">(${rows.length})</span></div>
-    ${buildEntryTable(rows, true)}
-  </div>`;
-}
-
-function buildEntryTable(rows, showActivity){
-  if(!rows.length) return `<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No entries yet — click <strong>+ Add</strong></div>`;
-  const cols = showActivity ? ['Month','Activity','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status',''] : ['Month','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status',''];
-  const span = cols.length;
-  const rowsHtml = rows.map(e=>{
-    const v = (e.actual||0)-(e.planned||0);
-    const vClr = v===0?'var(--t3)':v>0?'var(--da)':'var(--su)';
-    const invLinks=(e.invoice_names||[]).map((n,i)=>`<a href="/api/invoice/${e.id}/${i}" style="color:var(--in);text-decoration:underline;font-size:11px;display:block;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(n)}">${esc(n)}</a>`).join('');
+function buildEntryTable(rows,showAct){
+  if(!rows.length) return `<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No entries</div>`;
+  const cols=showAct?['Month','Activity','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status','']:['Month','Finance Cat.','Description','Planned','Confirmed','Actual','Var','Vendor','JIRA','Status',''];
+  const rh=rows.map(e=>{
+    const v=(e.actual||0)-(e.planned||0);
+    const vClr=v===0?'var(--t3)':v>0?'var(--da)':'var(--su)';
     return `<tr>
       <td style="color:var(--t2);white-space:nowrap">${mLbl(e.month)}</td>
-      ${showActivity?`<td style="font-size:11.5px;color:var(--in);font-weight:500">${esc(e.activity_name||'—')}</td>`:''}
+      ${showAct?`<td style="font-size:11.5px;color:var(--in);font-weight:500">${esc(e.activity_name||'—')}</td>`:''}
       <td style="color:var(--t2)">${esc(e.finance_cat||'—')}</td>
       <td style="max-width:120px"><span title="${esc(e.description)}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.description||'—')}</span></td>
       <td class="mono" style="color:var(--go);white-space:nowrap">${e.planned?'$'+fmt(e.planned):'—'}</td>
@@ -562,195 +481,613 @@ function buildEntryTable(rows, showActivity){
       <td><div style="display:flex;gap:4px">
         <button class="btn btn-g btn-xs" onclick="openEM('${e.id}',null,null)">&#x270E;</button>
         <button class="btn btn-d btn-xs" onclick="openDM('${e.id}')">&#x2715;</button>
-      </div></td>
-    </tr>`;
+      </div></td></tr>`;
   }).join('');
-  return `<div class="tbl-wrap"><table>
-    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
-    <tbody>${rowsHtml}</tbody>
-  </table></div>`;
+  return `<div class="tbl-wrap"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rh}</tbody></table></div>`;
 }
 
-function toggleCh(id){
-  const b=g(`chb-${id}`),v=g(`chev-${id}`);
-  const open=b.style.display==='block';
-  b.style.display=open?'none':'block';
-  v.style.transform=open?'':'rotate(90deg)';
-}
-function toggleAct(id){
-  const b=g(`actb-${id}`),v=g(`achev-${id}`);
-  const open=b.style.display==='block';
-  b.style.display=open?'none':'block';
-  v.style.transform=open?'':'rotate(90deg)';
+function toggleCh(id){const b=g(`chb-${id}`),v=g(`chev-${id}`);const open=b.style.display==='block';b.style.display=open?'none':'block';v.style.transform=open?'':'rotate(90deg)';}
+function toggleAct(id){const b=g(`actb-${id}`),v=g(`achev-${id}`);const open=b.style.display==='block';b.style.display=open?'none':'block';v.style.transform=open?'':'rotate(90deg)';}
+
+// ===================================================================
+// ANALYTICS PAGE
+// ===================================================================
+async function renderAnalytics(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    const aq = window._analyticsQ || '';
+    const data = await api(`/api/analytics${aq?'?quarter='+aq:''}`);
+    window._anData = data; // store for client-side re-filter
+    const s = data.summary;
+    const varClr = s.variance>0?'var(--da)':'var(--su)';
+
+    // Build filter options from data
+    const anCountries = (data.by_country||[]).map(c=>c.country).sort();
+    const anChannels = (data.by_channel||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.channel).sort();
+    const anMktCats = (data.by_marketing_cat||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.category).sort();
+
+    let html=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:600">&#x1F4C8; Analytics</div>
+      <div class="qtabs">
+        <button class="qtab ${aq===''?'active':''}" onclick="window._analyticsQ='';renderAnalytics()">All</button>
+        ${QS.map(q2=>`<button class="qtab ${q2===aq?'active':''}" onclick="window._analyticsQ='${q2}';renderAnalytics()">${q2}</button>`).join('')}
+      </div>
+    </div>`;
+
+    // Filter bar — dropdown checkboxes
+    html+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${ddFilter('an_co','Country',anCountries,function(){anFilter()})}
+      ${ddFilter('an_ch','Channel',anChannels,function(){anFilter()})}
+      ${ddFilter('an_mc','Marketing Cat',anMktCats,function(){anFilter()})}
+      <select style="padding:5px 24px 5px 8px;font-size:11px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;background:var(--s);${SBG}">
+        <option selected>FY26 (Jul 25 – Jun 26)</option>
+      </select>
+      <button class="btn btn-g btn-xs" onclick="ddClearAll();anFilter()">Clear Filters</button>
+      <span id="an-f-info" style="font-size:10px;color:var(--t3)"></span>
+    </div>`;
+
+    // Summary stats
+    html+=`<div class="stats-row">
+      <div class="stat"><div class="stat-l">Total Budget</div><div class="stat-v">$${fmt(s.total_budget)}</div></div>
+      <div class="stat"><div class="stat-l">Planned</div><div class="stat-v" style="color:var(--go)">$${fmt(s.total_planned)}</div></div>
+      <div class="stat"><div class="stat-l">Confirmed</div><div class="stat-v" style="color:var(--in)">$${fmt(s.total_confirmed)}</div></div>
+      <div class="stat"><div class="stat-l">Actual</div><div class="stat-v" style="color:var(--su)">$${fmt(s.total_actual)}</div></div>
+      <div class="stat"><div class="stat-l">Variance</div><div class="stat-v" style="color:${varClr}">${s.variance>0?'+':''}$${fmt(s.variance)}</div></div>
+      <div class="stat"><div class="stat-l">Utilization</div><div class="stat-v">${s.budget_utilization.toFixed(1)}%</div></div>
+    </div>`;
+
+    // Charts grid
+    // Budget Summary Matrix (Marketing Category × Country) — FIRST
+    const matrixCols = data.matrix_countries || [];
+    const matrix = data.budget_matrix || [];
+    if(matrix.length>0 && matrixCols.length>0){
+      const lastRow = matrix[matrix.length-1];
+      const isTotal = lastRow.category==='Total';
+      const dataRows = isTotal ? matrix.slice(0,-1) : matrix;
+      const totalRow = isTotal ? lastRow : null;
+      const mxFmt = v => v>0 ? '$'+fmt(v) : '';
+      const mxFmtVar = v => v===0?'—':((v>0?'+':'')+('$'+fmt(v)));
+
+      // Store for client-side country switching
+      window._mxData = dataRows;
+      window._mxTotal = totalRow;
+      window._mxCols = matrixCols;
+
+      html+=`<div class="card" style="overflow:hidden;margin-bottom:14px">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="font-weight:600;font-size:14px">APAC Budget Summary</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="qtabs" id="mx-metric-tabs">
+              <button class="qtab active" onclick="mxSetMetric('bud')">Budget</button>
+              <button class="qtab" onclick="mxSetMetric('pln')">Planned</button>
+              <button class="qtab" onclick="mxSetMetric('act')">Actual</button>
+            </div>
+            <select id="mx-co-sel" onchange="mxRender()" style="padding:6px 26px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;${SBG}">
+              <option value="ALL">All Countries</option>
+              ${matrixCols.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')}
+            </select>
+          </div>
+        </div>
+        <div id="mx-table-wrap"></div>
+      </div>`;
+
+      window._mxMetric = 'bud';
+      setTimeout(function(){ mxRender(); },10);
+    } // end budget matrix if-block
+
+    // Charts grid
+    html+=`<div class="chart-grid">
+      <div class="chart-card"><h3>Planned vs Actual by Country</h3><canvas id="chart-country"></canvas></div>
+      <div class="chart-card"><h3>Monthly Spend Trend</h3><canvas id="chart-monthly"></canvas></div>
+      <div class="chart-card"><h3>Spend by Channel</h3><canvas id="chart-channel"></canvas></div>
+      <div class="chart-card"><h3>By Marketing Category</h3><canvas id="chart-mktcat"></canvas></div>
+    </div>`;
+
+    // Completion metrics
+    const comp = data.completion;
+    const pctAct = comp.total>0?(comp.with_actual/comp.total*100).toFixed(0):0;
+    const pctJira = comp.total>0?(comp.with_jira/comp.total*100).toFixed(0):0;
+    const pctAppr = comp.total>0?(comp.approved/comp.total*100).toFixed(0):0;
+
+    html+=`<div class="card" style="padding:16px;margin-bottom:14px">
+      <h3 style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">Completion Metrics</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <div><div style="font-size:11px;color:var(--t3);margin-bottom:4px">With Actuals</div>
+          <div style="display:flex;align-items:center;gap:8px"><div class="bbar-wrap" style="flex:1;height:8px"><div class="bbar" style="width:${pctAct}%;background:var(--su)"></div></div><span class="mono" style="font-size:12px">${comp.with_actual}/${comp.total} (${pctAct}%)</span></div></div>
+        <div><div style="font-size:11px;color:var(--t3);margin-bottom:4px">With JIRA</div>
+          <div style="display:flex;align-items:center;gap:8px"><div class="bbar-wrap" style="flex:1;height:8px"><div class="bbar" style="width:${pctJira}%;background:var(--in)"></div></div><span class="mono" style="font-size:12px">${comp.with_jira}/${comp.total} (${pctJira}%)</span></div></div>
+        <div><div style="font-size:11px;color:var(--t3);margin-bottom:4px">Approved</div>
+          <div style="display:flex;align-items:center;gap:8px"><div class="bbar-wrap" style="flex:1;height:8px"><div class="bbar" style="width:${pctAppr}%;background:var(--go)"></div></div><span class="mono" style="font-size:12px">${comp.approved}/${comp.total} (${pctAppr}%)</span></div></div>
+      </div>
+    </div>`;
+
+    // Top variances table
+    if(data.top_variances && data.top_variances.length>0){
+      html+=`<div class="card" style="overflow:hidden;margin-bottom:14px">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--b);font-weight:600;font-size:12px">Top Variances</div>
+        <div class="tbl-wrap"><table><thead><tr><th>Country</th><th>Channel</th><th>Description</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Variance</th><th style="text-align:right">%</th></tr></thead>
+        <tbody>${data.top_variances.slice(0,15).map(v=>{
+          const vc=v.variance>0?'var(--da)':'var(--su)';
+          return `<tr class="an-var-row" data-co="${esc(v.country)}" data-ch="${esc(v.channel)}"><td>${esc(v.country)}</td><td style="font-size:11px">${esc(v.channel)}</td><td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.description)}</td>
+            <td class="mono" style="text-align:right;color:var(--go)">$${fmt(v.planned)}</td>
+            <td class="mono" style="text-align:right;color:var(--su)">$${fmt(v.actual)}</td>
+            <td class="mono" style="text-align:right;color:${vc}">${v.variance>0?'+':''}$${fmt(v.variance)}</td>
+            <td class="mono" style="text-align:right;color:${vc};font-size:11px">${v.variance_pct>0?'+':''}${v.variance_pct.toFixed(1)}%</td></tr>`;
+        }).join('')}</tbody></table></div></div>`;
+    }
+
+    g('page').innerHTML = html;
+
+    // Render charts
+    setTimeout(()=>{
+      // Country chart
+      const cc = data.by_country.filter(c=>c.planned>0||c.actual>0);
+      if(cc.length>0 && g('chart-country')){
+        _chartInstances.country = new Chart(g('chart-country'),{type:'bar',data:{
+          labels:cc.map(c=>c.country),
+          datasets:[
+            {label:'Planned',data:cc.map(c=>c.planned),backgroundColor:'rgba(154,110,10,0.6)',borderRadius:3},
+            {label:'Actual',data:cc.map(c=>c.actual),backgroundColor:'rgba(28,79,60,0.7)',borderRadius:3},
+          ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},scales:{y:{ticks:{callback:v=>'$'+fmt(v)},grid:{color:'rgba(0,0,0,.05)'}},x:{grid:{display:false}}}}});
+      }
+
+      // Monthly trend
+      const mm = data.by_month;
+      if(mm.length>0 && g('chart-monthly')){
+        _chartInstances.monthly = new Chart(g('chart-monthly'),{type:'line',data:{
+          labels:mm.map(m=>mLbl(m.month)),
+          datasets:[
+            {label:'Planned',data:mm.map(m=>m.planned),borderColor:'#9a6e0a',backgroundColor:'rgba(154,110,10,0.1)',fill:true,tension:.3},
+            {label:'Actual',data:mm.map(m=>m.actual),borderColor:'#1c4f3c',backgroundColor:'rgba(28,79,60,0.1)',fill:true,tension:.3},
+          ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},scales:{y:{ticks:{callback:v=>'$'+fmt(v)},grid:{color:'rgba(0,0,0,.05)'}},x:{grid:{display:false}}}}});
+      }
+
+      // Channel doughnut
+      const ch = data.by_channel.filter(c=>c.actual>0).slice(0,10);
+      if(ch.length>0 && g('chart-channel')){
+        const colors=['#1c4f3c','#9a6e0a','#1a3fa3','#b71c1c','#14703a','#92600a','#375623','#0070C0','#C65911','#666'];
+        _chartInstances.channel = new Chart(g('chart-channel'),{type:'doughnut',data:{
+          labels:ch.map(c=>c.channel),
+          datasets:[{data:ch.map(c=>c.actual),backgroundColor:colors.slice(0,ch.length)}]
+        },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:12}}}}});
+      }
+
+      // Marketing category horizontal bar
+      const mc = data.by_marketing_cat.filter(c=>c.actual>0).slice(0,10);
+      if(mc.length>0 && g('chart-mktcat')){
+        _chartInstances.mktcat = new Chart(g('chart-mktcat'),{type:'bar',data:{
+          labels:mc.map(c=>c.category),
+          datasets:[
+            {label:'Planned',data:mc.map(c=>c.planned),backgroundColor:'rgba(154,110,10,0.5)',borderRadius:3},
+            {label:'Actual',data:mc.map(c=>c.actual),backgroundColor:'rgba(28,79,60,0.6)',borderRadius:3},
+          ]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},scales:{x:{ticks:{callback:v=>'$'+fmt(v)},grid:{color:'rgba(0,0,0,.05)'}},y:{grid:{display:false}}}}});
+      }
+    },100);
+
+  }catch(e){
+    g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
+  }
 }
 
-// ── ENTRY MODAL ────────────────────────────────────────────────
-function openEM(entryId, chanId, actId){
+// Analytics client-side filters — hide/show table rows & update charts
+function anFilter(){
+  const selCo=ddGetValues('an_co_dd');
+  const selCh=ddGetValues('an_ch_dd');
+  const selMc=ddGetValues('an_mc_dd');
+  const active=selCo.length+selCh.length+selMc.length;
+  const info=g('an-f-info');
+  if(info) info.textContent=active>0?active+' filter(s) active':'';
+
+  document.querySelectorAll('.an-var-row').forEach(function(tr){
+    const co=tr.dataset.co||'';
+    const ch=tr.dataset.ch||'';
+    const show=(selCo.length===0||selCo.includes(co))&&(selCh.length===0||selCh.includes(ch));
+    tr.style.display=show?'':'none';
+  });
+
+  document.querySelectorAll('.an-mx-row').forEach(function(tr){
+    const mc=tr.dataset.mc||'';
+    const show=(selMc.length===0||selMc.includes(mc));
+    tr.style.display=show?'':'none';
+  });
+}
+function anClearFilters(){
+  ddClearAll();
+  anFilter();
+}
+
+// Budget matrix metric toggle + render
+function mxSetMetric(m){
+  window._mxMetric=m;
+  document.querySelectorAll('#mx-metric-tabs .qtab').forEach(function(b){b.classList.remove('active')});
+  var labels={bud:'Budget',pln:'Planned',act:'Actual'};
+  document.querySelectorAll('#mx-metric-tabs .qtab').forEach(function(b){if(b.textContent===labels[m])b.classList.add('active')});
+  mxRender();
+}
+function mxRender(){
+  var wrap=g('mx-table-wrap'); if(!wrap) return;
+  var rows=window._mxData||[];
+  var total=window._mxTotal;
+  var cols=window._mxCols||[];
+  var met=window._mxMetric||'bud';
+  var mf=function(v){return v>0?'$'+fmt(v):''};
+  var metLabel={bud:'Budget',pln:'Planned',act:'Actual'}[met];
+  var co=(g('mx-co-sel')||{}).value||'ALL';
+
+  if(co==='ALL'){
+    // All-countries: show selected metric per country + 3 total columns (Bud/Pln/Act always)
+    var h='<table style="width:100%;font-size:12px"><thead><tr style="background:var(--s2)">';
+    h+='<th style="text-align:left;padding:9px 14px;min-width:180px">Marketing Category</th>';
+    cols.forEach(function(c){h+='<th style="text-align:right;padding:9px 10px">'+esc(c)+'</th>'});
+    h+='<th style="text-align:right;padding:9px 8px;border-left:2px solid var(--b)">Budget</th>';
+    h+='<th style="text-align:right;padding:9px 8px;color:var(--go)">Planned</th>';
+    h+='<th style="text-align:right;padding:9px 8px;color:var(--su)">Actual</th>';
+    h+='</tr></thead><tbody>';
+    rows.forEach(function(r){
+      var hasData=cols.some(function(c){return (r[c+'_bud']||0)>0||(r[c+'_pln']||0)>0||(r[c+'_act']||0)>0});
+      if(!hasData) return;
+      h+='<tr class="an-mx-row" data-mc="'+esc(r.category)+'">';
+      h+='<td style="padding:8px 14px;font-weight:500;border-bottom:1px solid var(--b)">'+esc(r.category)+'</td>';
+      cols.forEach(function(c){
+        var v=r[c+'_'+met]||0;
+        h+='<td class="mono" style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--b);color:var(--t)">'+mf(v)+'</td>';
+      });
+      h+='<td class="mono" style="text-align:right;padding:8px 8px;border-bottom:1px solid var(--b);border-left:2px solid var(--b);font-weight:600">'+mf(r.total_bud)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:8px 8px;border-bottom:1px solid var(--b);font-weight:600;color:var(--go)">'+mf(r.total_pln)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:8px 8px;border-bottom:1px solid var(--b);font-weight:600;color:var(--su)">'+mf(r.total_act)+'</td>';
+      h+='</tr>';
+    });
+    if(total){
+      h+='</tbody><tfoot><tr style="background:var(--s3)">';
+      h+='<td style="padding:10px 14px;font-weight:700">Total</td>';
+      cols.forEach(function(c){h+='<td class="mono" style="text-align:right;padding:10px 10px;font-weight:700">'+mf(total[c+'_'+met]||0)+'</td>'});
+      h+='<td class="mono" style="text-align:right;padding:10px 8px;font-weight:700;border-left:2px solid var(--b)">'+mf(total.total_bud)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:10px 8px;font-weight:700;color:var(--go)">'+mf(total.total_pln)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:10px 8px;font-weight:700;color:var(--su);font-size:13px">'+mf(total.total_act)+'</td>';
+      h+='</tr></tfoot>';
+    }
+    h+='</table>';
+    wrap.innerHTML=h;
+  } else {
+    // Single country: Category | Budget | Planned | Actual | Variance
+    var h='<table style="width:100%;font-size:12.5px"><thead><tr style="background:var(--s2)">';
+    h+='<th style="text-align:left;padding:9px 14px;min-width:200px">Marketing Category</th>';
+    h+='<th style="text-align:right;padding:9px 14px">Budget</th>';
+    h+='<th style="text-align:right;padding:9px 14px">Planned</th>';
+    h+='<th style="text-align:right;padding:9px 14px">Actual</th>';
+    h+='<th style="text-align:right;padding:9px 14px">Variance</th>';
+    h+='</tr></thead><tbody>';
+    var tBud=0,tPln=0,tAct=0;
+    rows.forEach(function(r){
+      var b=r[co+'_bud']||0, p=r[co+'_pln']||0, a=r[co+'_act']||0;
+      if(b===0&&p===0&&a===0) return;
+      var v=a-p;
+      var vc=v>0?'color:var(--da)':v<0?'color:var(--su)':'color:var(--t3)';
+      tBud+=b;tPln+=p;tAct+=a;
+      h+='<tr class="an-mx-row" data-mc="'+esc(r.category)+'">';
+      h+='<td style="padding:9px 14px;font-weight:500;border-bottom:1px solid var(--b)">'+esc(r.category)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:9px 14px;border-bottom:1px solid var(--b)">'+mf(b)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:9px 14px;border-bottom:1px solid var(--b);color:var(--go)">'+mf(p)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:9px 14px;border-bottom:1px solid var(--b);color:var(--su)">'+mf(a)+'</td>';
+      h+='<td class="mono" style="text-align:right;padding:9px 14px;border-bottom:1px solid var(--b);'+vc+'">'+(p||a?(v>0?'+':'')+('$'+fmt(v)):'')+'</td>';
+      h+='</tr>';
+    });
+    var tv=tAct-tPln;
+    var tvc=tv>0?'color:var(--da)':tv<0?'color:var(--su)':'color:var(--t3)';
+    h+='</tbody><tfoot><tr style="background:var(--s3)">';
+    h+='<td style="padding:10px 14px;font-weight:700">Total</td>';
+    h+='<td class="mono" style="text-align:right;padding:10px 14px;font-weight:700">'+mf(tBud)+'</td>';
+    h+='<td class="mono" style="text-align:right;padding:10px 14px;font-weight:700;color:var(--go)">'+mf(tPln)+'</td>';
+    h+='<td class="mono" style="text-align:right;padding:10px 14px;font-weight:700;color:var(--su)">'+mf(tAct)+'</td>';
+    h+='<td class="mono" style="text-align:right;padding:10px 14px;font-weight:700;'+tvc+'">'+(tv>0?'+':'')+('$'+fmt(tv))+'</td>';
+    h+='</tr></tfoot></table>';
+    wrap.innerHTML=h;
+  }
+}
+// ===================================================================
+// ===================================================================
+// PM SYNC PAGE
+// ===================================================================
+async function renderPM(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    const data = await api(`/api/pm/preview?quarter=${quarter}`);
+    let html=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:16px;font-weight:600">&#x1F517; PM Data Sync</div>
+        <span style="font-size:11px;color:var(--t3)">Source: Performance Marketing Google Sheet</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderPM()">${q}</button>`).join('')}</div>
+        <button class="btn btn-g btn-sm" onclick="renderPM()">&#x21BB; Refresh</button>
+        <button class="btn btn-p btn-sm" id="pm-sync-btn" onclick="pmRunAutoSync()">&#x21BB; Sync Now</button>
+      </div>
+    </div>`;
+
+    // Auto-sync status banner - always visible
+    html+=`<div id="pm-sync-banner" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--r);font-size:12px;margin-bottom:10px;background:var(--inb);color:var(--in)">
+      <span style="font-weight:600">Auto-sync:</span> <span id="pm-sync-status">Starting... reading PM sheet data</span>
+    </div>`;
+
+    // Summary
+    html+=`<div class="stats-row" style="margin-bottom:14px">
+      <div class="stat"><div class="stat-l">PM Sheet Rows</div><div class="stat-v">${fmt(data.total_rows)}</div></div>
+      <div class="stat"><div class="stat-l">APAC Rows</div><div class="stat-v">${fmt(data.apac_rows)}</div></div>
+      <div class="stat"><div class="stat-l">Total Spend (AUD)</div><div class="stat-v" style="color:var(--su)">$${fmt(data.total_spend)}</div></div>
+      <div class="stat"><div class="stat-l">Aggregated Lines</div><div class="stat-v">${data.preview.length}</div></div>
+    </div>`;
+
+    if(!data.preview.length){
+      html+=`<div style="text-align:center;padding:40px;color:var(--t3)">No PM data found for ${quarter}</div>`;
+      if(data.debug){
+        const dbg = data.debug;
+        const skipStr = Object.entries(dbg.skip_reasons||{}).map(function(e){return e[0]+': '+e[1]}).join(' · ') || 'none';
+        const sampleHtml = (dbg.sample_rows||[]).map(function(s){return '<div style="font-family:DM Mono,monospace;font-size:10px;background:var(--s2);padding:4px 8px;border-radius:4px;margin:3px 0">'+esc(JSON.stringify(s))+'</div>'}).join('');
+        html+=`<div class="card" style="padding:16px;margin-top:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--wa);text-transform:uppercase;margin-bottom:8px">Debug Info</div>
+          <div style="font-size:11px;color:var(--t2);line-height:1.8">
+            <div><strong>Quarter filter:</strong> ${esc(dbg.quarter_filter||'none')}</div>
+            <div><strong>Columns found:</strong> ${(dbg.columns_found||[]).join(', ')}</div>
+            <div><strong>Skip reasons:</strong> ${skipStr}</div>
+            <div style="margin-top:8px"><strong>Sample rows:</strong></div>
+            ${sampleHtml}
+          </div>
+        </div>`;
+      }
+      g('page').innerHTML=html; return;
+    }
+
+    // Store full preview and build filter options
+    window._pmPreview = data.preview;
+    const pmCountries = [...new Set(data.preview.map(r=>r.country))].sort();
+    const pmChannels = [...new Set(data.preview.map(r=>r.channel_group))].sort();
+    const pmMonths = [...new Set(data.preview.map(r=>r.month))].sort();
+
+    // Filters bar
+    html+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${ddFilter('pm_co','Country',pmCountries,function(){pmFilterTable()})}
+      ${ddFilter('pm_ch','Channel',pmChannels,function(){pmFilterTable()})}
+      ${ddFilter('pm_mo','Month',pmMonths.map(function(m){return m}),function(){pmFilterTable()})}
+      <button class="btn btn-g btn-xs" onclick="pmClearFilters()">Clear Filters</button>
+      <span id="pm-f-count" style="font-size:11px;color:var(--t3)">${data.preview.length} rows</span>
+    </div>`;
+
+    // Read-only preview table
+    html+=`<div class="card" style="overflow:hidden;margin-bottom:14px">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between">
+        <div><span style="font-weight:600;font-size:13px"><span id="pm-vis-count">${data.preview.length}</span> aggregated rows</span>
+          <span style="font-size:11px;color:var(--t3);margin-left:8px">Country + Channel + Month</span></div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Country</th><th>Channel Group</th><th>Month</th><th style="text-align:right">Spend (AUD)</th><th style="text-align:right">QL</th><th style="text-align:right">FT</th><th>Mapped Channel</th><th>Finance Cat</th><th>Activity Name</th></tr></thead>
+        <tbody id="pm-tbody">${data.preview.map(function(r,i){
+          var ms=r.month; var mShort={'2025-07':'Jul 25','2025-08':'Aug 25','2025-09':'Sep 25','2025-10':'Oct 25','2025-11':'Nov 25','2025-12':'Dec 25','2026-01':'Jan 26','2026-02':'Feb 26','2026-03':'Mar 26','2026-04':'Apr 26','2026-05':'May 26','2026-06':'Jun 26'}[ms]||ms;
+          var actName=r.country+' FY26 '+r.quarter+' - '+r.channel_group+' - '+mShort;
+          return '<tr class="pm-row" data-co="'+esc(r.country)+'" data-ch="'+esc(r.channel_group)+'" data-mo="'+r.month+'">'
+            +'<td style="font-weight:500">'+esc(r.country)+'</td>'
+            +'<td>'+esc(r.channel_group)+'</td>'
+            +'<td>'+mLbl(r.month)+'</td>'
+            +'<td class="mono" style="text-align:right;color:var(--su)">$'+fmt(r.spend)+'</td>'
+            +'<td class="mono" style="text-align:right">'+fmt(r.ql)+'</td>'
+            +'<td class="mono" style="text-align:right">'+fmt(r.ft)+'</td>'
+            +'<td style="font-size:11px;color:var(--ac)">'+esc(r.mapped_channel)+'</td>'
+            +'<td style="font-size:11px">'+esc(r.mapped_finance_cat)+'</td>'
+            +'<td style="font-size:11px;color:var(--t2)">'+esc(actName)+'</td>'
+            +'</tr>';
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+    html+=`<div style="font-size:11px;color:var(--t3);line-height:1.7">
+      &#x2139; Data syncs automatically when you open this page. Each row creates an entry grouped by activity: <strong>{Country} FY26 {Quarter} - {Channel} - {Month}</strong>.<br>
+      &#x2139; Existing entries are updated with latest spend. Entries are never overwritten with $0 if they already have spend recorded.
+    </div>`;
+
+    g('page').innerHTML=html;
+    // Trigger auto-sync in background (non-blocking)
+    setTimeout(function(){ pmRunAutoSync(); }, 100);
+  }catch(e){
+    g('page').innerHTML=`<div style="padding:24px"><div style="background:var(--dab);border:1px solid var(--dabr);border-radius:var(--r);padding:16px"><div style="font-weight:600;color:var(--da)">PM Sheet Load Failed</div><div style="font-size:12px;color:var(--t2);margin-top:4px">${esc(e.message)}</div><div style="font-size:11px;color:var(--t3);margin-top:8px">Make sure the PM Google Sheet is shared with your service account.</div></div></div>`;
+  }
+}
+
+function toggleAllPM(){
+  const cbs=document.querySelectorAll('.pm-cb');
+  const allChecked=[...cbs].every(c=>c.checked);
+  cbs.forEach(c=>c.checked=!allChecked);
+  const ha=g('pm-all'); if(ha) ha.checked=!allChecked;
+}
+
+function pmApplyGroupName(){
+  const name=(g('pm-group-input')?.value||'').trim();
+  if(!name){toast('Enter a group name first','err');return;}
+  const cbs=document.querySelectorAll('.pm-cb:checked');
+  if(!cbs.length){toast('Select rows first','err');return;}
+  let count=0;
+  cbs.forEach(cb=>{
+    const idx=cb.dataset.idx;
+    const grpInput=document.querySelector('.pm-grp[data-idx="'+idx+'"]');
+    if(grpInput){grpInput.value=name;count++;}
+  });
+  toast('Tagged '+count+' rows as "'+name+'"','ok');
+}
+
+function pmClearGroups(){
+  document.querySelectorAll('.pm-grp').forEach(inp=>inp.value='');
+  toast('Cleared all group tags','info');
+}
+
+function pmFilterTable(){
+  const selCo=ddGetValues('pm_co_dd');
+  const selCh=ddGetValues('pm_ch_dd');
+  const selMo=ddGetValues('pm_mo_dd');
+  let vis=0;
+  document.querySelectorAll('.pm-row').forEach(function(tr){
+    const co=tr.dataset.co||'';
+    const ch=tr.dataset.ch||'';
+    const mo=tr.dataset.mo||'';
+    const show=(selCo.length===0||selCo.includes(co)) && (selCh.length===0||selCh.includes(ch)) && (selMo.length===0||selMo.includes(mo));
+    tr.style.display=show?'':'none';
+    if(show) vis++;
+  });
+  const cnt=g('pm-vis-count'); if(cnt) cnt.textContent=vis;
+  const cnt2=g('pm-f-count'); if(cnt2) cnt2.textContent=vis+' rows';
+}
+function pmClearFilters(){
+  ddClearAll();
+  pmFilterTable();
+}
+
+async function pmRunAutoSync(){
+  const btn=g('pm-sync-btn');
+  const banner=g('pm-sync-banner');
+  const status=g('pm-sync-status');
+  if(btn){btn.disabled=true;btn.textContent='Syncing...';}
+  if(status) status.textContent='Reading PM sheet & syncing to tracker... this may take 30-60 seconds';
+  if(banner){banner.style.display='flex';banner.style.background='var(--inb)';banner.style.color='var(--in)';}
+  try{
+    const sr=await fetch('/api/pm/auto_sync').then(function(r){return r.json()});
+    console.log('Auto-sync result:', sr);
+    if(sr.ok){
+      var parts=[];
+      if(sr.synced>0) parts.push(sr.synced+' new');
+      if(sr.updated>0) parts.push(sr.updated+' updated');
+      if(sr.skipped>0) parts.push(sr.skipped+' unchanged');
+      if(sr.activities_created>0) parts.push(sr.activities_created+' activities');
+      if(sr.channels_created>0) parts.push(sr.channels_created+' channels');
+      var msg=parts.length>0?parts.join(' \u00b7 '):'All up to date';
+      var hasChanges=sr.synced>0||sr.updated>0;
+      if(banner){banner.style.background=hasChanges?'var(--sub)':'var(--s2)';banner.style.color=hasChanges?'var(--su)':'var(--t3)';}
+      if(status) status.textContent=msg+' ('+sr.total_agg_rows+' PM rows processed)';
+      if(hasChanges){invalidateCache();toast('PM synced: '+msg,'ok');}
+    } else if(sr.error){
+      if(banner){banner.style.background='var(--wab)';banner.style.color='var(--wa)';}
+      if(status) status.textContent='Error: '+sr.error;
+      console.error('Auto-sync error:', sr.error);
+    }
+  }catch(e){
+    console.error('Auto-sync fetch error:', e);
+    if(banner){banner.style.background='var(--wab)';banner.style.color='var(--wa)';}
+    if(status) status.textContent='Failed: '+e.message+' (check Flask terminal for details)';
+  }
+  if(btn){btn.disabled=false;btn.textContent='\u21BB Sync Now';}
+}
+
+async function syncPM(){
+  const cbs=document.querySelectorAll('.pm-cb:checked');
+  if(!cbs.length){toast('Select rows to sync','err');return;}
+  const rows=[...cbs].map(cb=>{
+    const idx=parseInt(cb.dataset.idx);
+    const row={...window._pmPreview[idx]};
+    const grpInput=document.querySelector('.pm-grp[data-idx="'+idx+'"]');
+    row.group_tag=(grpInput?.value||'').trim();
+    return row;
+  });
+  toast('Syncing '+rows.length+' rows...','info');
+  try{
+    const d = await api('/api/pm/sync',{method:'POST',body:JSON.stringify(rows)});
+    invalidateCache();
+    let msg='Synced '+d.saved+' entries';
+    if(d.activities_created>0) msg+=' ('+d.activities_created+' activities)';
+    if(d.channels_created>0) msg+=' ('+d.channels_created+' channels)';
+    if(d.skipped>0) msg+=' · '+d.skipped+' skipped';
+    toast(msg, 'ok');
+    renderPM();
+  }catch(e){toast(e.message||'Sync failed','err');}
+}
+
+// ===================================================================
+// ENTRY MODAL (simplified)
+// ===================================================================
+function openEM(entryId,chanId,actId){
   editEntryId=entryId; pendingInvs=[]; approveState=false;
-  const e = entryId ? entries.find(x=>x.id===entryId) : null;
-  const defCh  = chanId  || e?.channel_id   || '';
-  const defAct = actId   || e?.activity_id  || '';
-  approveState = e?.approved||false;
-  existInvNames = [...(e?.invoice_names||[])];
+  const e=entryId?entries.find(x=>x.id===entryId):null;
+  const defCh=chanId||e?.channel_id||'';
+  const defAct=actId||e?.activity_id||'';
+  approveState=e?.approved||false;
+  existInvNames=[...(e?.invoice_names||[])];
 
-  // Load vendors list (async but non-blocking — form renders immediately)
   if(!window._vendorList) window._vendorList=[];
   api('/api/vendors').then(v=>{window._vendorList=v;}).catch(()=>{});
 
-  g('em-ttl').textContent = e ? 'Edit Line Item' : 'Add Line Item';
-  const hasChannels = budgetData.channels.length>0;
-
-  // Channel selector — always a dropdown
-  const chOptions = budgetData.channels.length > 0
-    ? budgetData.channels.map(c=>`<option value="${c.id}" ${c.id===defCh?'selected':''}>${esc(c.name)}</option>`).join('')
-    : `<option value="" disabled>No channels configured yet</option>`;
-
-  const chField = `<div class="field" id="fg-ch">
-    <label>Channel<span class="req">*</span></label>
-    <select id="m-ch" onchange="onChChange(this)" ${budgetData.channels.length===0?'disabled':''}>
-      <option value="">Select channel...</option>
-      ${chOptions}
-    </select>
-    ${budgetData.channels.length===0
-      ? `<span style="font-size:11px;color:var(--wa)">&#x26A0; ${IS_ADMIN?'<a href="#" onclick="sv(\'config\');closeEM();return false;" style="color:var(--wa)">Add channels in Budget Config</a>':'Ask admin to configure channels'}</span>`
-      : '<span class="err-msg">Required</span>'}
-  </div>`;
-
-  // Activity selector — required when activities exist under the channel
-  const chObj = budgetData.channels.find(c=>c.id===defCh);
-  const acts  = chObj?.activities||[];
-  const autoSelectAct = acts.length===1 && !defAct ? acts[0].id : defAct;
-  const actRequired = acts.length > 0;
-  const actOptions = acts.length > 0
-    ? acts.map(a=>`<option value="${a.id}" ${a.id===autoSelectAct?'selected':''}>${esc(a.name)}</option>`).join('')
-    : '';
-  const actField = `<div class="field" id="fg-act">
-    <label>Activity${actRequired?'<span class="req">*</span>':' <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span>'}</label>
-    <select id="m-act" ${acts.length===0?'disabled':''}>
-      <option value="">${acts.length===0?'— select channel first —':(actRequired?'Select activity...':'No activity / general')}</option>
-      ${actOptions}
-    </select>
-    ${actRequired?'<span class="err-msg">Select an activity</span>':''}
-  </div>`;
-
-  const canApp = true; // Approval always available — JIRA is optional
+  g('em-ttl').textContent=e?'Edit Line Item':'Add Line Item';
+  const chOptions=budgetData.channels.length>0?budgetData.channels.map(c=>`<option value="${c.id}" ${c.id===defCh?'selected':''}>${esc(c.name)}</option>`).join(''):'';
+  const chObj=budgetData.channels.find(c=>c.id===defCh);
+  const acts=chObj?.activities||[];
+  const autoAct=acts.length===1&&!defAct?acts[0].id:defAct;
+  const actOptions=acts.map(a=>`<option value="${a.id}" ${a.id===autoAct?'selected':''}>${esc(a.name)}</option>`).join('');
 
   g('em-body').innerHTML=`
     <div class="sdiv"><span>Details</span></div>
-    <div class="fg fg3">${chField}${actField}
+    <div class="fg fg3">
+      <div class="field"><label>Channel<span class="req">*</span></label>
+        <select id="m-ch" onchange="onChChange(this)"><option value="">Select...</option>${chOptions}</select><span class="err-msg">Required</span></div>
+      <div class="field"><label>Activity</label>
+        <select id="m-act" ${acts.length===0?'disabled':''}><option value="">—</option>${actOptions}</select></div>
       <div class="field"><label>Month<span class="req">*</span></label>
-        <select id="m-mo"><option value="">Select...</option>${MONTHS.map(m=>`<option value="${m.v}" ${e?.month===m.v?'selected':''}>${m.l}</option>`).join('')}</select>
-        <span class="err-msg">Required</span></div>
+        <select id="m-mo"><option value="">Select...</option>${MONTHS.map(m=>`<option value="${m.v}" ${e?.month===m.v?'selected':''}>${m.l}</option>`).join('')}</select><span class="err-msg">Required</span></div>
     </div>
     <div class="fg fg2">
       <div class="field"><label>BU / Finance Account<span class="req">*</span></label>
-        <select id="m-bu"><option value="">Select...</option>${BU_LIST.map(b=>`<option value="${b}" ${e?.bu===b?'selected':''}>${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('')}</select>
-        <span class="err-msg">Required</span></div>
+        <select id="m-bu"><option value="">Select...</option>${BU_LIST.map(b=>`<option value="${esc(b)}" ${e?.bu===b?'selected':''}>${esc(b.replace('Marketing : ','').replace(/\\s*-\\s*613\\d{6}XXX/,''))}</option>`).join('')}</select><span class="err-msg">Required</span></div>
       <div class="field"><label>Finance Category<span class="req">*</span></label>
-        <select id="m-fc"><option value="">Select...</option>${sel(FIN_CATS,e?.finance_cat)}</select>
-        <span class="err-msg">Required</span></div>
+        <select id="m-fc"><option value="">Select...</option>${sel(FIN_CATS,e?.finance_cat)}</select><span class="err-msg">Required</span></div>
     </div>
     <div class="fg fg2">
       <div class="field"><label>Marketing Category<span class="req">*</span></label>
-        <select id="m-mc"><option value="">Select...</option>${sel(MKT_CATS,e?.marketing_cat)}</select>
-        <span class="err-msg">Required</span></div>
+        <select id="m-mc"><option value="">Select...</option>${sel(MKT_CATS,e?.marketing_cat)}</select><span class="err-msg">Required</span></div>
       <div class="field"><label>Description</label>
         <input type="text" id="m-desc" value="${esc(e?.description||'')}" placeholder="Brief description..."></div>
     </div>
     <div class="sdiv"><span>Budget (USD)</span></div>
     <div class="fg fg3">
-      <div class="field"><label>Planned &amp; Approved<span class="req">*</span></label>
-        <input type="number" id="m-pln" min="0" step="0.01" value="${e?.planned??''}" placeholder="0.00"><span class="err-msg">Required</span></div>
-      <div class="field"><label>Confirmed &amp; Estimated</label>
-        <input type="number" id="m-con" min="0" step="0.01" value="${e?.confirmed??''}" placeholder="0.00"></div>
-      <div class="field"><label>Actual (after billing)</label>
-        <input type="number" id="m-act2" min="0" step="0.01" value="${e?.actual??''}" placeholder="0.00"></div>
+      <div class="field"><label>Planned<span class="req">*</span></label><input type="number" id="m-pln" min="0" step="0.01" value="${e?.planned??''}"><span class="err-msg">Required</span></div>
+      <div class="field"><label>Confirmed</label><input type="number" id="m-con" min="0" step="0.01" value="${e?.confirmed??''}"></div>
+      <div class="field"><label>Actual</label><input type="number" id="m-act2" min="0" step="0.01" value="${e?.actual??''}"></div>
     </div>
     <div class="sdiv"><span>Supporting Info</span></div>
     <div class="fg fg2">
-      <div class="field"><label>JIRA Task</label>
-        <input type="text" id="m-jira" value="${esc(e?.jira||'')}" placeholder="e.g. MKT-1234" oninput="onJiraInput()"></div>
+      <div class="field"><label>JIRA Task</label><input type="text" id="m-jira" value="${esc(e?.jira||'')}"></div>
       <div class="field"><label>Vendor<span class="req">*</span></label>
-        <select id="m-ven" onchange="if(this.value==='__new__'){this.style.display='none';g('m-ven-new-wrap').style.display='flex';}">
-          <option value="">Select vendor...</option>
-          ${(window._vendorList||[]).map(v=>`<option value="${esc(v.name)}" ${e?.vendor===v.name?'selected':''}>${esc(v.name)}${v.country!=='GLOBAL'?' ('+v.country+')':''}</option>`).join('')}
+        <select id="m-ven"><option value="">Select...</option>
+          ${(window._vendorList||[]).map(v=>`<option value="${esc(v.name)}" ${e?.vendor===v.name?'selected':''}>${esc(v.name)}</option>`).join('')}
           ${e?.vendor&&!(window._vendorList||[]).find(v=>v.name===e.vendor)?`<option value="${esc(e.vendor)}" selected>${esc(e.vendor)}</option>`:''}
-          <option value="__new__">+ Add new vendor...</option>
-        </select>
-        <div id="m-ven-new-wrap" style="display:none;gap:6px;margin-top:4px">
-          <input type="text" id="m-ven-new" placeholder="New vendor name..." style="flex:1">
-          <button type="button" class="btn btn-p btn-xs" onclick="addNewVendorInline()">Add</button>
-          <button type="button" class="btn btn-g btn-xs" onclick="g('m-ven-new-wrap').style.display='none';g('m-ven').style.display='';g('m-ven').value='';">Cancel</button>
-        </div>
-        <span class="err-msg">Required</span></div>
+        </select><span class="err-msg">Required</span></div>
     </div>
-    <div class="field" style="margin-bottom:12px"><label>Notes / Comments</label>
-      <textarea id="m-notes" placeholder="Adjustments, context...">${esc(e?.notes||'')}</textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="m-notes">${esc(e?.notes||'')}</textarea></div>
     <div class="sdiv"><span>Invoices</span></div>
-    <div id="inv-list">${existInvNames.map((n,i)=>`<div class="inv-row" id="einv-${i}"><span>&#x1F4CE;</span><a href="/api/invoice/${entryId}/${i}" class="inv-link" download="${esc(n)}">${esc(n)}</a><button class="inv-rm" onclick="rmExInv(${i})">&#x2715;</button></div>`).join('')}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <label class="inv-drop" style="flex:1"><span>&#x1F4CE;</span><span>Attach invoice (JPG / PDF)</span>
-        <input type="file" accept=".jpg,.jpeg,.pdf" multiple style="display:none" onchange="handleInv(this)"></label>
-      <label class="inv-drop" style="flex:1;border-color:var(--inbr);color:var(--in)"><span>&#x1F4C2;</span><span>Bulk upload (CSV / Excel)</span>
-        <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleBulk(this)"></label>
-    </div>
-    <div id="bulk-preview"></div>`;
+    <div id="inv-list">${existInvNames.map((n,i)=>`<div class="inv-row" id="einv-${i}"><span>&#x1F4CE;</span><a href="/api/invoice/${entryId}/${i}" class="inv-link">${esc(n)}</a><button class="inv-rm" onclick="rmExInv(${i})">&#x2715;</button></div>`).join('')}</div>
+    <label class="inv-drop"><span>&#x1F4CE; Attach invoice</span><input type="file" accept=".jpg,.jpeg,.pdf" multiple style="display:none" onchange="handleInv(this)"></label>`;
 
   g('em-foot').innerHTML=`
     <div style="display:flex;align-items:center;gap:8px">
       <div class="toggle-track ${approveState?'on':''}" id="app-tog" onclick="toggleApp()"><div class="toggle-knob"></div></div>
       <span id="app-lbl" style="font-size:12px;font-weight:500;color:${approveState?'var(--su)':'var(--t3)'}">${approveState?'Approved':'Pending'}</span>
-      <span id="app-hint" style="font-size:11px;color:var(--t3)"></span>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-g" onclick="closeEM()">Cancel</button>
-      <button class="btn btn-p" onclick="saveEntry()">${e?'Update':'Save Entry'}</button>
+      <button class="btn btn-p" onclick="saveEntry()">${e?'Update':'Save'}</button>
     </div>`;
 
-  g('m-mo').addEventListener('change',function(){const m=MONTHS.find(x=>x.v===this.value);if(m) g('m-qtr-hidden')&&(g('m-qtr-hidden').value=m.q);});
-
-  // Auto-fill mapping if channel pre-selected
-  if(!e && defCh){ const ch=budgetData.channels.find(c=>c.id===defCh); if(ch) setTimeout(()=>applyMapping(ch.name),50); }
-
+  if(!e && defCh){const ch=budgetData.channels.find(c=>c.id===defCh);if(ch) setTimeout(()=>applyMapping(ch.name),50);}
   g('ov-entry').classList.add('open');
 }
 
 function onChChange(sel){
-  const ch = budgetData.channels.find(c=>c.id===sel.value);
-  const actSel = g('m-act');
+  const ch=budgetData.channels.find(c=>c.id===sel.value);
+  const actSel=g('m-act');
   if(actSel){
-    const acts = ch?.activities||[];
-    const hasActs = acts.length>0;
-    actSel.innerHTML = `<option value="">${!hasActs?'No activities yet':(hasActs?'Select activity...':'No activity / general')}</option>`
-      + acts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
-    actSel.disabled = false;
-    // Auto-select if only one activity
+    const acts=ch?.activities||[];
+    actSel.innerHTML=`<option value="">—</option>`+acts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+    actSel.disabled=false;
     if(acts.length===1) actSel.value=acts[0].id;
-    // Update label
-    const lbl=actSel.closest('.field')?.querySelector('label');
-    if(lbl) lbl.innerHTML=hasActs?'Activity<span class="req">*</span>':'Activity <span style="font-size:10px;color:var(--t3);text-transform:none;font-weight:400;letter-spacing:0">(optional)</span>';
   }
   if(ch) applyMapping(ch.name);
-}
-function onJiraInput(){
-  // JIRA is optional — no gating on approval
 }
 function toggleApp(){
   approveState=!approveState;
   g('app-tog')?.classList.toggle('on',approveState);
-  const l=g('app-lbl');
-  if(l){l.textContent=approveState?'Approved':'Pending';l.style.color=approveState?'var(--su)':'var(--t3)';}
-  // Nudge: remind about JIRA + invoice for audit
-  if(approveState){
-    const hasJira=!!(gv('m-jira'));
-    const hasInv=existInvNames.length>0||pendingInvs.length>0;
-    if(!hasJira||!hasInv){
-      const missing=[];
-      if(!hasJira) missing.push('JIRA ticket');
-      if(!hasInv) missing.push('invoice');
-      toast(`Approved — please add ${missing.join(' & ')} for audit compliance`,'info');
-    }
-  }
+  const l=g('app-lbl'); if(l){l.textContent=approveState?'Approved':'Pending';l.style.color=approveState?'var(--su)':'var(--t3)';}
 }
 function rmExInv(i){existInvNames.splice(i,1);g(`einv-${i}`)?.remove();}
 function handleInv(inp){
@@ -758,53 +1095,26 @@ function handleInv(inp){
     const r=new FileReader();
     r.onload=ev=>{
       const idx=pendingInvs.length;
-      pendingInvs.push({name:f.name,size:f.size,dataUrl:ev.target.result});
-      g('inv-list').insertAdjacentHTML('beforeend',`<div class="inv-row" id="pinv-${idx}"><span>&#x1F4CE;</span><span class="inv-link">${esc(f.name)}</span><span style="font-size:11px;color:var(--t3);flex-shrink:0">${(f.size/1024).toFixed(0)}KB</span><button class="inv-rm" onclick="rmPInv(${idx})">&#x2715;</button></div>`);
+      pendingInvs.push({name:f.name,dataUrl:ev.target.result});
+      g('inv-list').insertAdjacentHTML('beforeend',`<div class="inv-row" id="pinv-${idx}"><span>&#x1F4CE;</span><span class="inv-link">${esc(f.name)}</span><button class="inv-rm" onclick="rmPInv(${idx})">&#x2715;</button></div>`);
     };r.readAsDataURL(f);
   });inp.value='';
 }
 function rmPInv(i){pendingInvs.splice(i,1);g(`pinv-${i}`)?.remove();}
-function addNewVendorInline(){
-  const name=g('m-ven-new')?.value?.trim();
-  if(!name){toast('Enter a vendor name','err');return;}
-  api('/api/vendors',{method:'POST',body:JSON.stringify({name})})
-    .then(v=>{
-      window._vendorList=(window._vendorList||[]).concat(v);
-      const sel=g('m-ven');
-      const opt=document.createElement('option');opt.value=v.name;opt.textContent=v.name;opt.selected=true;
-      sel.insertBefore(opt,sel.querySelector('option[value="__new__"]'));
-      sel.style.display='';g('m-ven-new-wrap').style.display='none';g('m-ven-new').value='';
-      toast('Vendor added ✓','ok');
-    })
-    .catch(e=>toast(e.message||'Failed to add vendor','err'));
-}
 function closeEM(){g('ov-entry').classList.remove('open');}
 
 async function saveEntry(){
-  const hasChannels=budgetData.channels.length>0;
   const req={mo:'m-mo',bu:'m-bu',fc:'m-fc',mc:'m-mc',pln:'m-pln',ven:'m-ven'};
-  // Only require channel if channels exist and select is not disabled
-  const chEl = g('m-ch');
-  if(chEl && !chEl.disabled && budgetData.channels.length>0) req.ch='m-ch';
-  // Require activity if activities exist for the selected channel
-  const selCh = chEl?.value ? budgetData.channels.find(c=>c.id===chEl.value) : null;
-  if(selCh && selCh.activities && selCh.activities.length>0) req.act='m-act';
+  const chEl=g('m-ch');
+  if(chEl&&budgetData.channels.length>0) req.ch='m-ch';
   let ok=true;
-  Object.values(req).forEach(id=>{const el=g(id),p=el?.closest('.field');if(!el?.value?.trim()||el?.value==='__new__'){p?.classList.add('has-err');ok=false;}else p?.classList.remove('has-err');});
-  if(!ok){toast('Fill in all required fields','err');return;}
+  Object.values(req).forEach(id=>{const el=g(id),p=el?.closest('.field');if(!el?.value?.trim()){p?.classList.add('has-err');ok=false;}else p?.classList.remove('has-err');});
+  if(!ok){toast('Fill required fields','err');return;}
 
   let channelId='',channelName='',activityId='',activityName='';
-  const chElSave = g('m-ch');
-  if(chElSave && !chElSave.disabled && chElSave.value){
-    const ch=budgetData.channels.find(c=>c.id===chElSave.value);
-    channelId=chElSave.value; channelName=ch?.name||'';
-  }
-  const actElSave = g('m-act');
-  if(actElSave && actElSave.value){
-    activityId=actElSave.value;
-    activityName=actElSave.options[actElSave.selectedIndex]?.text||'';
-    if(activityName==='No activity / general'||activityName==='No activities yet') activityName='';
-  }
+  if(chEl&&chEl.value){const ch=budgetData.channels.find(c=>c.id===chEl.value);channelId=chEl.value;channelName=ch?.name||'';}
+  const actEl=g('m-act');
+  if(actEl&&actEl.value){activityId=actEl.value;activityName=actEl.options[actEl.selectedIndex]?.text||'';}
 
   const mo=gv('m-mo');
   const mObj=MONTHS.find(x=>x.v===mo);
@@ -817,1073 +1127,308 @@ async function saveEntry(){
     planned:parseFloat(gv('m-pln'))||0,
     confirmed:parseFloat(gv('m-con'))||0,
     actual:parseFloat(gv('m-act2'))||0,
-    jira:gv('m-jira'), vendor:(gv('m-ven')==='__new__'?gv('m-ven-new'):gv('m-ven')), notes:g('m-notes')?.value?.trim()||'',
+    jira:gv('m-jira'), vendor:gv('m-ven'), notes:g('m-notes')?.value?.trim()||'',
     approved:approveState,
     invoice_names:[...existInvNames,...pendingInvs.map(i=>i.name)],
     invoice_data:[...pendingInvs.map(i=>i.dataUrl)],
   };
   try{
     if(editEntryId){
-      // Optimistic update for edits (entry already exists)
-      const idx = entries.findIndex(e=>e.id===editEntryId);
-      if(idx>=0) entries[idx] = {...entries[idx], ...payload, approved:approveState, invoice_names:payload.invoice_names};
-      _cache.entries = entries;
-      rerender();
-      closeEM(); toast('Entry updated ✓','ok');
-      api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)})
-        .catch(e=>{toast('Sync error: '+(e.message||'check Flask terminal'),'err');});
+      const idx=entries.findIndex(e=>e.id===editEntryId);
+      if(idx>=0) entries[idx]={...entries[idx],...payload};
+      _cache.entries=entries;
+      closeEM();toast('Updated ✓','ok');render();
+      api(`/api/entries/${editEntryId}`,{method:'PUT',body:JSON.stringify(payload)}).catch(e=>toast('Sync error','err'));
     } else {
-      // Wait for server confirmation on new entries — don't lose data
-      const saveBtn = g('em-foot')?.querySelector('.btn-p');
-      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Saving...';}
-      try{
-        const d = await api('/api/entries',{method:'POST',body:JSON.stringify(payload)});
-        entries.push({...payload, id:d.id, entered_by:USER, updated_at:new Date().toISOString(), invoice_names:payload.invoice_names});
-        _cache.entries = entries;
-        rerender();
-        closeEM(); toast('Entry saved ✓','ok');
-      }catch(e){
-        if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save Entry';}
-        toast('Save failed: '+(e.message||'unknown error'),'err');
-      }
+      const d=await api('/api/entries',{method:'POST',body:JSON.stringify(payload)});
+      entries.push({...payload,id:d.id,entered_by:USER,updated_at:new Date().toISOString(),invoice_names:payload.invoice_names});
+      _cache.entries=entries;
+      closeEM();toast('Saved ✓','ok');render();
     }
   }catch(e){toast(e.message,'err');}
 }
 
-// ── BULK UPLOAD ────────────────────────────────────────────────
-function handleBulk(inp){
-  const file=inp.files[0]; if(!file){return;} inp.value='';
-  if(file.name.match(/\.csv$/i)){
-    const r=new FileReader(); r.onload=ev=>parseBulk(ev.target.result); r.readAsText(file);
-  } else {
-    toast('Parsing Excel...','info');
-    const fd=new FormData(); fd.append('file',file);
-    fetch('/api/parse_bulk',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
-      if(d.error){toast(d.error,'err');}else{showBulkPreview(d.rows);}
-    }).catch(()=>toast('Failed to parse Excel','err'));
-  }
-}
-function parseBulk(text){
-  const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  const first=lines[0]?.toLowerCase()||'';
-  const hasHdr=first.includes('month')||first.includes('vendor')||first.includes('planned');
-  const data=hasHdr?lines.slice(1):lines;
-  const parsed=data.map(line=>{
-    const c=line.match(/(".*?"|[^,]+)(?:,|$)/g)?.map(p=>p.replace(/,$/,'').replace(/^"|"$/g,'').trim())||[];
-    if(c.length<2) return null;
-    return{month:c[0]||'',activity:c[1]||'',desc:c[2]||'',vendor:c[3]||'',
-           planned:parseFloat((c[4]||'').replace(/[^0-9.]/g,''))||0,
-           confirmed:parseFloat((c[5]||'').replace(/[^0-9.]/g,''))||0,
-           actual:parseFloat((c[6]||'').replace(/[^0-9.]/g,''))||0,
-           jira:c[7]||'',notes:c[8]||''};
-  }).filter(Boolean);
-  if(!parsed.length){toast('No valid rows found','err');return;}
-  showBulkPreview(parsed);
-}
-function showBulkPreview(rows){
-  g('bulk-preview').innerHTML=`
-    <div style="margin-top:12px;border:1px solid var(--inbr);border-radius:var(--r);overflow:hidden">
-      <div style="padding:9px 14px;background:var(--in);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12px;font-weight:600;color:#fff">&#x1F4C2; ${rows.length} rows ready to import</span>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-xs" style="color:#fff;border:1px solid rgba(255,255,255,.4);background:transparent" onclick="g('bulk-preview').innerHTML=''">Cancel</button>
-          <button class="btn btn-xs" style="background:#fff;color:var(--in);font-weight:600" onclick="confirmBulk()">Save All</button>
-        </div>
-      </div>
-      <div class="tbl-wrap"><table>
-        <thead><tr style="background:rgba(26,63,163,.08)">
-          <th style="color:var(--in)">Month</th><th style="color:var(--in)">Activity</th><th style="color:var(--in)">Description</th><th style="color:var(--in)">Vendor</th><th style="color:var(--in);text-align:right">Planned</th><th style="color:var(--in);text-align:right">Actual</th>
-        </tr></thead>
-        <tbody>${rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(26,63,163,.03)':''}">
-          <td>${esc(r.month)}</td><td>${esc(r.activity)}</td><td>${esc(r.desc)}</td><td>${esc(r.vendor)}</td>
-          <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.planned)}</td>
-          <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.actual)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>
-      <div style="padding:7px 14px;font-size:11px;color:var(--in);background:rgba(26,63,163,.04)">
-        &#x2139; Channel, BU &amp; categories auto-filled from current selection. &nbsp;
-        <a href="/api/bulk_template" style="color:var(--in)">&#x2193; Download template</a>
-      </div>
-    </div>`;
-  window._bulkRows=rows;
-}
-async function confirmBulk(){
-  const rows=window._bulkRows||[]; if(!rows.length) return;
-  const hasChannels=budgetData.channels.length>0;
-  let channelId='',channelName='';
-  if(hasChannels){const ch=budgetData.channels.find(c=>c.id===gv('m-ch'));channelId=gv('m-ch');channelName=ch?.name||'';}
-  else{channelName=g('m-ch')?.value?.trim()||'';}
-  g('bulk-preview').innerHTML='';window._bulkRows=[];
-  closeEM(); toast(`Saving ${rows.length} entries...`,'info');
-  // Save all, then reload fresh data once
-  Promise.all(rows.map(r => {
-    const mObj=MONTHS.find(x=>x.l.toLowerCase()===r.month.toLowerCase()||x.v===r.month);
-    return api('/api/entries',{method:'POST',body:JSON.stringify({
-      country,quarter:mObj?.q||quarter,month:mObj?.v||r.month,
-      channel_id:channelId,channel_name:channelName,
-      activity_id:'',activity_name:r.activity,
-      bu:g('m-bu')?.value||'',finance_cat:g('m-fc')?.value||'',marketing_cat:g('m-mc')?.value||'',
-      description:r.desc,planned:r.planned,confirmed:r.confirmed,actual:r.actual,
-      jira:r.jira,vendor:r.vendor,notes:r.notes,
-      approved:false,invoice_names:[],invoice_data:[],
-    })});
-  })).then(()=>{ invalidateCache(); renderDash(); toast(`Imported ${rows.length} entries ✓`,'ok'); })
-     .catch(()=>{ invalidateCache(); renderDash(); toast('Some entries may not have saved — please check','err'); });
-}
-
-// ── DELETE ─────────────────────────────────────────────────────
+// Delete
 function openDM(id){delEntryId=id;g('ov-del').classList.add('open');}
 function closeDM(){g('ov-del').classList.remove('open');}
 async function confirmDel(){
-  // Optimistic delete
-  entries = entries.filter(e=>e.id!==delEntryId);
-  _cache.entries = entries;
-  rerender();
-  closeDM(); toast('Deleted','info');
-  api(`/api/entries/${delEntryId}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderDash(); toast('Delete failed — refreshing','err'); });
+  entries=entries.filter(e=>e.id!==delEntryId);
+  _cache.entries=entries;
+  closeDM();toast('Deleted','info');render();
+  api(`/api/entries/${delEntryId}`,{method:'DELETE'}).catch(()=>{invalidateCache();renderDash();});
 }
 
-// ── ACTIVITY MODAL ─────────────────────────────────────────────
+// Activity
 function openAM(actId,name,chanId){
-  editActId=actId; actChanId=chanId;
+  editActId=actId;actChanId=chanId;
   g('actm-ttl').textContent=actId?'Edit Activity':'Add Activity';
-  g('actm-body').innerHTML=`<div class="fg fg1">
-    <div class="field"><label>Activity Name<span class="req">*</span></label>
-      <input type="text" id="am-name" value="${esc(name||'')}" placeholder="e.g. CNY Campaign, Q1 Google Push, AMF1 Activation...">
-      <span class="err-msg">Required</span></div>
-  </div>`;
-  g('ov-act').classList.add('open');
-  setTimeout(()=>g('am-name')?.focus(),50);
+  g('actm-body').innerHTML=`<div class="field"><label>Activity Name<span class="req">*</span></label><input type="text" id="am-name" value="${esc(name||'')}"><span class="err-msg">Required</span></div>`;
+  g('ov-act').classList.add('open');setTimeout(()=>g('am-name')?.focus(),50);
 }
 function closeAM(){g('ov-act').classList.remove('open');}
 async function saveAct(){
   const name=gv('am-name');
-  if(!name){g('am-name')?.closest('.field')?.classList.add('has-err');toast('Name required','err');return;}
+  if(!name){toast('Name required','err');return;}
   closeAM();
-  try{
-    if(editActId){
-      // Update local state
-      budgetData.channels.forEach(ch=>{
-        const a=ch.activities?.find(a=>a.id===editActId);
-        if(a) a.name=name;
-      });
-      _cache.budget=budgetData;
-      rerender();
-      toast('Activity updated ✓','ok');
-      api(`/api/activities/${editActId}`,{method:'PUT',body:JSON.stringify({name})}).catch(()=>toast('Sync error','err'));
-    } else {
-      // Add to local state immediately
-      const tmpId='act_tmp_'+Date.now();
-      const ch=budgetData.channels.find(c=>c.id===actChanId);
-      if(ch){ ch.activities=ch.activities||[]; ch.activities.push({id:tmpId,name,sort_order:ch.activities.length}); }
-      _cache.budget=budgetData;
-      rerender();
-      toast('Activity added ✓','ok');
-      api('/api/activities',{method:'POST',body:JSON.stringify({channel_id:actChanId,country,quarter,name})})
-        .then(d=>{ const ch=budgetData.channels.find(c=>c.id===actChanId); if(ch){const a=ch.activities?.find(a=>a.id===tmpId);if(a)a.id=d.id;} })
-        .catch(()=>{ invalidateCache(); renderDash(); toast('Save failed','err'); });
-    }
-  }catch(e){toast(e.message,'err');}
+  if(editActId){
+    budgetData.channels.forEach(ch=>{const a=ch.activities?.find(a=>a.id===editActId);if(a)a.name=name;});
+    _cache.budget=budgetData;toast('Updated ✓','ok');render();
+    api(`/api/activities/${editActId}`,{method:'PUT',body:JSON.stringify({name})}).catch(()=>toast('Sync error','err'));
+  } else {
+    const tmpId='act_tmp_'+Date.now();
+    const ch=budgetData.channels.find(c=>c.id===actChanId);
+    if(ch){ch.activities=ch.activities||[];ch.activities.push({id:tmpId,name,sort_order:ch.activities.length});}
+    _cache.budget=budgetData;toast('Added ✓','ok');render();
+    api('/api/activities',{method:'POST',body:JSON.stringify({channel_id:actChanId,country,quarter,name})})
+      .then(d=>{const ch=budgetData.channels.find(c=>c.id===actChanId);if(ch){const a=ch.activities?.find(a=>a.id===tmpId);if(a)a.id=d.id;}})
+      .catch(()=>{invalidateCache();renderDash();});
+  }
 }
-
 async function deleteAct(id){
-  if(!confirm('Delete this activity? Entries under it will become unassigned.')) return;
-  // Remove from local state
-  budgetData.channels.forEach(ch=>{
-    ch.activities=(ch.activities||[]).filter(a=>a.id!==id);
-  });
-  _cache.budget=budgetData;
-  rerender();
-  toast('Activity deleted','info');
-  api(`/api/activities/${id}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderDash(); toast('Delete failed','err'); });
+  if(!confirm('Delete this activity?')) return;
+  budgetData.channels.forEach(ch=>{ch.activities=(ch.activities||[]).filter(a=>a.id!==id);});
+  _cache.budget=budgetData;toast('Deleted','info');render();
+  api(`/api/activities/${id}`,{method:'DELETE'}).catch(()=>{invalidateCache();renderDash();});
 }
 
-// ── BUDGET CONFIG PAGE ─────────────────────────────────────────
-async function renderCfg(){
-  g('page').innerHTML='<div class="spinner"></div>';
-  try{
-    budgetData = await api(`/api/budget/${country}/${quarter}`);
-    _cache.budget = budgetData;
-    _cache.cacheKey = cacheKey();
-    let mappingRows=[];
-    try{mappingRows=await api('/api/mapping');}catch(e){mappingRows=budgetData.mapping||[];}
-    g('page').innerHTML = buildCfg(mappingRows);
-    setMapSelects(mappingRows);
-    loadBudgetOverview();
-    loadVendorList();
-  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
-}
-
-// Load all-markets budget overview table
-async function loadBudgetOverview(){
-  const body=g('budget-overview-body');
-  if(!body) return;
-  try{
-    const data = await api('/api/budget_summary');
-    if(!data.length){
-      body.innerHTML='<div style="text-align:center;padding:16px;color:var(--t3);font-size:12px">No budgets configured yet. Upload a budget CSV or set individual market budgets above.</div>';
-      return;
-    }
-    // Group by quarter
-    const byQ={};
-    data.forEach(r=>{ if(!byQ[r.quarter]) byQ[r.quarter]=[]; byQ[r.quarter].push(r); });
-
-    let html='';
-    for(const q of QS){
-      const rows=byQ[q];
-      if(!rows||!rows.length) continue;
-      const qTotal=rows.reduce((s,r)=>s+r.total,0);
-      const qAlloc=rows.reduce((s,r)=>s+r.allocated,0);
-      const qDev=qAlloc-qTotal;
-      html+=`<div style="margin-bottom:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;display:flex;align-items:center;gap:8px">
-          <span>${q}</span>
-          <span class="mono" style="font-weight:400;color:var(--t3);font-size:10px">Budget $${fmt(qTotal)} · Allocated $${fmt(qAlloc)} · ${qDev===0?'<span style="color:var(--su)">Balanced</span>':qDev>0?'<span style="color:var(--da)">Over +$'+fmt(qDev)+'</span>':'<span style="color:var(--wa)">Under $'+fmt(Math.abs(qDev))+'</span>'}</span>
-        </div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>Market</th><th style="text-align:right">Country Budget</th><th style="text-align:right">Channels</th><th style="text-align:right">Allocated</th><th style="text-align:right">Deviation</th></tr></thead>
-          <tbody>${rows.map((r,i)=>{
-            const devClr=r.deviation===0?'var(--su)':r.deviation>0?'var(--da)':'var(--wa)';
-            const isActive=r.country===country&&r.quarter===quarter;
-            return `<tr style="cursor:pointer;${isActive?'background:var(--acb);':''}" onclick="country='${r.country}';quarter='${r.quarter}';renderCfg()">
-              <td style="font-weight:${isActive?'600':'400'}">${esc(r.country)}${isActive?' ←':''}</td>
-              <td class="mono" style="text-align:right">${r.total?'$'+fmt(r.total):'<span style="color:var(--t3)">—</span>'}</td>
-              <td style="text-align:right;color:var(--t3)">${r.channels}</td>
-              <td class="mono" style="text-align:right;color:var(--ac)">${r.allocated?'$'+fmt(r.allocated):'—'}</td>
-              <td class="mono" style="text-align:right;color:${devClr}">${r.total||r.allocated?(r.deviation>0?'+':'')+('$'+fmt(r.deviation)):'—'}</td>
-            </tr>`;
-          }).join('')}</tbody>
-          <tfoot><tr>
-            <td style="font-weight:600">${q} Total</td>
-            <td class="mono" style="text-align:right;font-weight:600">$${fmt(qTotal)}</td>
-            <td style="text-align:right;color:var(--t3)">${rows.reduce((s,r)=>s+r.channels,0)}</td>
-            <td class="mono" style="text-align:right;font-weight:600;color:var(--ac)">$${fmt(qAlloc)}</td>
-            <td class="mono" style="text-align:right;font-weight:600;color:${qDev===0?'var(--su)':qDev>0?'var(--da)':'var(--wa)'}">${qDev>0?'+':''}$${fmt(qDev)}</td>
-          </tr></tfoot>
-        </table></div>
-      </div>`;
-    }
-    body.innerHTML=html||'<div style="color:var(--t3);font-size:12px">No budget data found.</div>';
-  }catch(e){
-    body.innerHTML=`<div style="color:var(--t3);font-size:12px">Could not load overview: ${esc(e.message)}</div>`;
-  }
-}
-
-function buildCfg(mappingRows){
-  const totCh=budgetData.channels.reduce((s,c)=>s+(c.budget||0),0);
-  const rem=(budgetData.total||0)-totCh;
-  const over=totCh>(budgetData.total||0)&&budgetData.total>0;
-  const p2=budgetData.total>0?pct(totCh,budgetData.total):0;
-  const hasBudget=budgetData.total>0;
-  const hasChannels=budgetData.channels.length>0;
-  const deviation=totCh-(budgetData.total||0);
-  const devAbs=Math.abs(deviation);
-
-  // Selector
-  const selHtml=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <select id="cfg-co" onchange="country=this.value;renderCfg()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>
-      <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderCfg()">${q}</button>`).join('')}</div>
-    </div>
-    <span style="font-size:12px;color:var(--t3)">Configuring <strong style="color:var(--t2)">${country} &#xB7; ${quarter}</strong></span>
-  </div>`;
-
-  // ── BUDGET OVERVIEW CARD ──
-  // Show stats: Country Budget | Channel Allocated | Deviation
-  let overviewInner='';
-  if(hasBudget || hasChannels){
-    const devClr = deviation===0 ? 'var(--su)' : deviation>0 ? 'var(--da)' : 'var(--wa)';
-    const devLbl = deviation===0 ? 'Balanced' : deviation>0 ? 'Over-allocated' : 'Under-allocated';
-    const devIcon = deviation===0 ? '&#x2713;' : '&#x26A0;';
-
-    overviewInner=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:${(hasBudget&&hasChannels)?'12':'0'}px">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Country Budget</div>
-          <div class="mono" style="font-size:22px;font-weight:500;color:${hasBudget?'var(--t)':'var(--t3)'}">${hasBudget?'$'+fmt(budgetData.total):'Not set'}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Channel Allocated</div>
-          <div class="mono" style="font-size:22px;font-weight:500;color:${hasChannels?'var(--ac)':'var(--t3)'}">${hasChannels?'$'+fmt(totCh):'No channels'}</div>
-          ${hasChannels?`<div style="font-size:11px;color:var(--t3);margin-top:2px">${budgetData.channels.length} channel${budgetData.channels.length===1?'':'s'}</div>`:''}
-        </div>
-        ${(hasBudget&&hasChannels)?`<div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
-          <div class="mono" style="font-size:22px;font-weight:500;color:${devClr}">${deviation>0?'+':''}$${fmt(deviation)}</div>
-          <div style="font-size:11px;color:${devClr};margin-top:2px">${devIcon} ${devLbl}</div>
-        </div>`:`<div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
-          <div style="font-size:13px;color:var(--t3);margin-top:4px">${!hasBudget&&hasChannels?'Set country budget to see deviation':!hasChannels&&hasBudget?'Add channels to see deviation':'—'}</div>
-        </div>`}
-      </div>
-      ${(hasBudget&&hasChannels)?`<div class="bbar-wrap" style="margin-top:4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
-      <div style="font-size:11px;color:var(--t3);margin-top:4px;display:flex;justify-content:space-between">
-        <span>${p2}% allocated</span>
-        <span>Remaining: $${fmt(Math.max(0,rem))}</span>
-      </div>`:''}
-      ${over?`<div class="warn-banner" style="margin-top:10px">&#x26A0; Channel budgets exceed country total by $${fmt(devAbs)}. Adjust channel budgets or increase the country total.</div>`:''}`;
-  }
-  const overviewHtml=`<div id="cfg-overview" ${(hasBudget||hasChannels)?'class="card" style="padding:16px 18px;margin-bottom:14px"':'style="margin-bottom:0"'}>${overviewInner}</div>`;
-
-  // ── BUDGET ALL-MARKETS TABLE ──
-  // Populated async after render
-  let allMarketsHtml=`<div class="card" style="padding:0;margin-bottom:14px;overflow:hidden">
-    <div style="padding:12px 18px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">All Markets — Budget Overview</div>
-      <button class="btn btn-g btn-xs" onclick="loadBudgetOverview()">&#x21BB; Refresh</button>
-    </div>
-    <div id="budget-overview-body" style="padding:12px 18px;font-size:12px;color:var(--t3)">Loading...</div>
-  </div>`;
-
-  // Channels list with activity sub-rows
-  const chListHtml = budgetData.channels.length===0
-    ? `<div style="text-align:center;padding:28px;border:2px dashed var(--b);border-radius:var(--r);color:var(--t3);font-size:13px">No channels yet — add your first one below</div>`
-    : budgetData.channels.map(ch=>{
-        const acts=ch.activities||[];
-        const actRows=acts.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 32px;border-top:1px dashed var(--b)">
-          <span style="font-size:11px;color:var(--t3)">&#x2514;</span>
-          <span style="font-size:12px;flex:1;color:var(--t2)">${esc(a.name)}</span>
-          <button class="btn btn-g btn-xs" onclick="openAM('${a.id}','${esc(a.name)}','${ch.id}')">&#x270E;</button>
-          <button class="btn btn-d btn-xs" onclick="deleteAct('${a.id}')">&#x2715;</button>
-        </div>`).join('');
-        return `<div class="cfg-row" style="flex-direction:column;align-items:stretch;padding:0">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:500;font-size:13px">${esc(ch.name)}</div>
-              <div class="mono" style="font-size:12px;color:var(--ac)">$${fmt(ch.budget)} &#xB7; <span style="color:var(--t3);font-family:'Sora',sans-serif;font-size:11px">${acts.length} activit${acts.length===1?'y':'ies'}</span></div>
-            </div>
-            <button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>
-            <button class="btn btn-g btn-xs" onclick="openCM('${ch.id}','${esc(ch.name)}',${ch.budget})">Edit</button>
-            <button class="btn btn-d btn-xs" onclick="delChan('${ch.id}')">&#x2715;</button>
-          </div>
-          ${actRows}
-        </div>`;
-      }).join('');
-
-  // Mapping section
-  const buOpts=BU_LIST.map(b=>`<option value="${b}">${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('');
-  const fcOpts=FIN_CATS.map(f=>`<option value="${f}">${esc(f)}</option>`).join('');
-  const mcOpts=MKT_CATS.map(m=>`<option value="${m}">${esc(m)}</option>`).join('');
-  const mapRows=(mappingRows||[]).map((r,i)=>`<tr id="mrow-${i}" style="border-bottom:1px solid var(--b);${i%2===0?'background:var(--s2)':''}">
-    <td style="padding:6px 10px"><input type="text" id="mk-${i}" value="${esc(r.channel_keyword||'')}" placeholder="e.g. performance" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--b);border-radius:4px"></td>
-    <td style="padding:6px 10px"><select id="mbu-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${buOpts}</select></td>
-    <td style="padding:6px 10px"><select id="mfc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${fcOpts}</select></td>
-    <td style="padding:6px 10px"><select id="mmc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${mcOpts}</select></td>
-    <td style="padding:6px 10px;text-align:center"><button onclick="g('mrow-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:13px">&#x2715;</button></td>
-  </tr>`).join('');
-
-  return selHtml + overviewHtml + allMarketsHtml + `
-
-  <!-- SET COUNTRY BUDGET -->
-  <div class="card" style="padding:18px;margin-bottom:14px">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Set Country Budget</div>
-    <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:4px">
-      <div class="field" style="max-width:280px"><label>${country} · ${quarter} Total Budget (USD)</label>
-        <input type="number" id="cfg-tot" min="0" step="1000" value="${budgetData.total||''}" placeholder="Enter total budget..."></div>
-      <button class="btn btn-p btn-sm" onclick="saveTot()">Save</button>
-    </div>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--b)">
-      <div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px">Or upload budgets for multiple markets at once:</div>
-      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
-        <div>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
-            <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Upload Budget CSV
-              <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importBudgetFile(this)">
-            </label>
-            <a href="/api/budget_template" class="btn btn-g btn-sm">&#x2193; Download Template</a>
-          </div>
-          <div style="font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
-            <span style="color:var(--t3)">Country, Quarter, Total Budget (USD)</span><br>
-            <span style="color:var(--t2)">TH, Q1, 150000</span><br>
-            <span style="color:var(--t2)">SG, Q1, 80000</span><br>
-            <span style="color:var(--t3);font-size:10px">&#x2022; Overwrites existing total if already set</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="budget-import-result" style="margin-top:8px"></div>
-  </div>
-
-  <!-- CHANNELS + ACTIVITIES -->
-  <div class="card" style="padding:18px;margin-bottom:14px">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:6px">Channels &amp; Activities</div>
-    <div style="font-size:12px;color:var(--t3);margin-bottom:10px">Channels hold the budget. Activities are grouping labels within each channel — no separate budget needed.</div>
-    <div id="ch-cfg" style="margin-bottom:10px">${chListHtml}</div>
-    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn btn-g btn-sm" onclick="openCM(null,'',0)">+ Add Channel</button>
-      <div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-          <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Upload Channels (CSV / Excel)
-            <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importChFile(this)">
-          </label>
-          <a href="/api/channel_template" class="btn btn-g btn-sm">&#x2193; Download Template</a>
-        </div>
-        <div style="font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
-          <span style="color:var(--t3)">Country, Quarter, Channel Name, Budget (USD)</span><br>
-          <span style="color:var(--t2)">TH, Q1, Performance Marketing, 50000</span><br>
-          <span style="color:var(--t2)">TH, Q1, Affiliate, 30000</span><br>
-          <span style="color:var(--t2)">SG, Q2, Paid Social, 25000</span><br>
-          <span style="color:var(--t3);font-size:10px">&#x2022; Duplicate channels (same country + quarter + name) are skipped automatically</span><br>
-          <span style="color:var(--t3);font-size:10px">&#x2022; Quarter: Q1 / Q2 / Q3 / Q4 &nbsp;|&nbsp; Country: TH / SG / MY / CN etc.</span>
-        </div>
-      </div>
-    </div>
-    <div id="import-preview" style="margin-top:10px"></div>
-  </div>
-
-  <!-- BU MAPPING -->
-  <div class="card" style="padding:18px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div>
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">BU &amp; Category Auto-fill Mapping</div>
-        <div style="font-size:12px;color:var(--t3);margin-top:3px">When a channel name contains a keyword, BU and categories auto-fill in the entry form.</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-g btn-sm" onclick="addMapRow()">+ Row</button>
-        <button class="btn btn-p btn-sm" onclick="saveMapping()">Save Mapping</button>
-      </div>
-    </div>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--s2)">
-          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:16%">Keyword</th>
-          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:32%">BU Account</th>
-          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:24%">Finance Category</th>
-          <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b);width:22%">Marketing Category</th>
-          <th style="padding:7px 10px;border-bottom:1px solid var(--b);width:36px"></th>
-        </tr></thead>
-        <tbody id="map-tbody">${mapRows}</tbody>
-      </table>
-    </div>
-    <div style="font-size:11px;color:var(--t3);margin-top:8px">&#x2139; Longest keyword match wins. Case-insensitive. Only fills empty fields — existing values are not overwritten.</div>
-  </div>
-
-  <!-- VENDORS -->
-  <div class="card" style="padding:18px;margin-top:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3)">Vendor Directory</div>
-        <div style="font-size:12px;color:var(--t3);margin-top:3px">Global vendors appear for all markets. Market-specific vendors only appear for that market's users.</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <label class="btn btn-g btn-sm" style="cursor:pointer">&#x2191; Import Vendors (CSV)
-          <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="importVendorFile(this)">
-        </label>
-        <button class="btn btn-p btn-sm" onclick="openAddVendor()">+ Add Vendor</button>
-      </div>
-    </div>
-    <div id="vendor-add-form" style="display:none;margin-bottom:10px">
-      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-        <div class="field" style="flex:1;min-width:160px"><label>Vendor Name</label><input type="text" id="v-name" placeholder="e.g. Google Ads, Meta..."></div>
-        <div class="field" style="min-width:120px"><label>Scope</label>
-          <select id="v-scope"><option value="GLOBAL">Global (all markets)</option>${MARKETS.map(m=>`<option value="${m}">${m} only</option>`).join('')}</select></div>
-        <button class="btn btn-p btn-sm" onclick="saveNewVendor()">Save</button>
-        <button class="btn btn-g btn-sm" onclick="g('vendor-add-form').style.display='none'">Cancel</button>
-      </div>
-    </div>
-    <div id="vendor-import-result" style="margin-bottom:8px"></div>
-    <div id="vendor-list" style="font-size:12px;color:var(--t3)">Loading vendors...</div>
-    <div style="margin-top:8px;font-size:11px;color:var(--t3);background:var(--s2);padding:8px 10px;border-radius:var(--r);border:1px solid var(--b);font-family:'DM Mono',monospace;line-height:1.9">
-      <span style="color:var(--t3)">CSV format: Vendor Name, Country (optional)</span><br>
-      <span style="color:var(--t2)">Google Ads, GLOBAL</span><br>
-      <span style="color:var(--t2)">Baidu, CN</span><br>
-      <span style="color:var(--t2)">LINE Ads, TH</span><br>
-      <span style="color:var(--t3);font-size:10px">&#x2022; Omit country for global vendors &nbsp;|&nbsp; Duplicates are skipped</span>
-    </div>
-  </div>`;
-}
-
-// Set select values after render (inline script workaround)
-function initMapSelects(){
-  document.querySelectorAll('[id^="mbu-"],[id^="mfc-"],[id^="mmc-"]').forEach(el=>{
-    // values set via data attribute trick below
-  });
-}
-
-// Channel config actions
-async function saveTot(){
-  const total=parseFloat(g('cfg-tot')?.value)||0;
-  budgetData.total=total;
-  _cache.budget=budgetData;
-  toast('Budget saved ✓','ok');
-  rebuildOverviewCard();
-  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).then(()=>loadBudgetOverview()).catch(()=>toast('Sync error','err'));
-}
-
+// Channel modal
 function openCM(id,name,budget){
   editChanId=id;
   g('chm-ttl').textContent=id?'Edit Channel':'Add Channel';
   g('chm-body').innerHTML=`<div class="fg fg1">
-    <div class="field"><label>Channel Name<span class="req">*</span></label>
-      <input type="text" id="cm-name" value="${esc(name||'')}" placeholder="e.g. Performance, Affiliate, Paid Social..."><span class="err-msg">Required</span></div>
-    <div class="field"><label>Budget (USD)<span class="req">*</span></label>
-      <input type="number" id="cm-bud" min="0" step="1000" value="${budget||''}" placeholder="0"><span class="err-msg">Required</span></div>
+    <div class="field"><label>Channel Name<span class="req">*</span></label><input type="text" id="cm-name" value="${esc(name||'')}"><span class="err-msg">Required</span></div>
+    <div class="field"><label>Budget (USD)<span class="req">*</span></label><input type="number" id="cm-bud" min="0" step="1000" value="${budget||''}"><span class="err-msg">Required</span></div>
   </div>`;
   g('ov-ch').classList.add('open');setTimeout(()=>g('cm-name')?.focus(),50);
 }
 function closeCM(){g('ov-ch').classList.remove('open');}
 
 async function saveChan(){
-  const n=gv('cm-name'),b=gv('cm-bud');let ok=true;
-  if(!n){g('cm-name')?.closest('.field')?.classList.add('has-err');ok=false;}
-  if(!b){g('cm-bud')?.closest('.field')?.classList.add('has-err');ok=false;}
-  if(!ok){toast('Fill in all fields','err');return;}
+  const n=gv('cm-name'),b=gv('cm-bud');
+  if(!n||!b){toast('Fill all fields','err');return;}
   const budget=parseFloat(b)||0;
   closeCM();
   if(editChanId){
-    const ch=budgetData.channels.find(c=>c.id===editChanId);
-    if(ch){ch.name=n;ch.budget=budget;}
-    _cache.budget=budgetData;
-    toast('Channel saved ✓','ok');
-    renderCfg();
+    const ch=budgetData.channels.find(c=>c.id===editChanId);if(ch){ch.name=n;ch.budget=budget;}
+    _cache.budget=budgetData;toast('Saved ✓','ok');render();
     api(`/api/channels/${editChanId}`,{method:'PUT',body:JSON.stringify({country,quarter,name:n,budget})}).catch(()=>toast('Sync error','err'));
   } else {
     const tmpId='ch_tmp_'+Date.now();
     budgetData.channels.push({id:tmpId,name:n,budget,sort_order:budgetData.channels.length,activities:[]});
-    _cache.budget=budgetData;
-    toast('Channel saved ✓','ok');
-    renderCfg();
+    _cache.budget=budgetData;toast('Saved ✓','ok');render();
     api('/api/channels',{method:'POST',body:JSON.stringify({country,quarter,name:n,budget})})
-      .then(d=>{ const ch=budgetData.channels.find(c=>c.id===tmpId);if(ch)ch.id=d.id; })
-      .catch(()=>{ invalidateCache(); renderCfg(); toast('Save failed','err'); });
+      .then(d=>{const ch=budgetData.channels.find(c=>c.id===tmpId);if(ch)ch.id=d.id;})
+      .catch(()=>{invalidateCache();renderDash();});
   }
 }
 
 async function delChan(id){
-  if(!confirm('Delete this channel? Activities and entries under it will lose their channel link.')) return;
+  if(!confirm('Delete this channel?')) return;
   budgetData.channels=budgetData.channels.filter(c=>c.id!==id);
-  _cache.budget=budgetData;
-  renderCfg();
-  toast('Deleted','info');
-  api(`/api/channels/${id}`,{method:'DELETE'}).catch(()=>{ invalidateCache(); renderCfg(); toast('Delete failed','err'); });
+  _cache.budget=budgetData;render();toast('Deleted','info');
+  api(`/api/channels/${id}`,{method:'DELETE'}).catch(()=>{invalidateCache();renderCfg();});
 }
 
-// Channel CSV/Excel import — server handles parsing + saving
-function importChFile(inp){
-  const file=inp.files[0]; if(!file){return;} inp.value='';
-  const fd=new FormData(); fd.append('file',file);
-  const prev=g('import-preview');
-  prev.innerHTML=`<div style="padding:10px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
-    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing channels...</div>`;
-  fetch('/api/import/channels',{method:'POST',body:fd})
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.error){toast(d.error,'err');prev.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${esc(d.error)}</div>`;return;}
-
-      const hasSaved = d.saved > 0;
-      const bg = hasSaved ? 'var(--sub)' : 'var(--wab)';
-      const br = hasSaved ? 'var(--subr)' : 'var(--wabr)';
-      const clr = hasSaved ? 'var(--su)' : 'var(--wa)';
-
-      // Skip detail
-      let skipInfo='';
-      if(d.skipped>0){
-        const parts=[];
-        if(d.skipped_dups>0) parts.push(`${d.skipped_dups} already exist`);
-        if(d.skipped_invalid>0) parts.push(`${d.skipped_invalid} invalid`);
-        skipInfo=`<div style="font-size:11px;color:var(--t2);margin-top:3px">${d.skipped} skipped (${parts.join(', ')})${d.skipped_dups>0&&!hasSaved?' — all channels in this file already exist in the sheet. To re-import, delete existing channels first or use a file with new data.':''}</div>`;
-      }
-
-      let html=`<div style="border:1px solid ${br};border-radius:var(--r);overflow:hidden;margin-top:8px">
-        <div style="padding:10px 14px;background:${bg};display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-          <div>
-            <span style="font-size:12px;font-weight:600;color:${clr}">${hasSaved?'&#x2713;':'&#x26A0;'} ${hasSaved?'Imported '+d.saved+' channel'+(d.saved===1?'':'s'):'No new channels imported'}</span>
-            ${skipInfo}
-          </div>
-          <button class="btn btn-xs btn-g" style="flex-shrink:0" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
-        </div>`;
-      if(d.rows && d.rows.length>0){
-        html+=`<div class="tbl-wrap"><table>
-          <thead><tr style="background:rgba(20,112,58,.06)"><th style="color:var(--su)">Country</th><th style="color:var(--su)">Quarter</th><th style="color:var(--su)">Channel</th><th style="color:var(--su);text-align:right">Budget</th></tr></thead>
-          <tbody>${d.rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(20,112,58,.03)':''}">
-            <td>${esc(r.country)}</td><td>${esc(r.quarter)}</td><td style="font-weight:500">${esc(r.name)}</td>
-            <td class="mono" style="text-align:right;color:var(--ac)">$${fmt(r.budget)}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>`;
-      }
-      html+=`</div>`;
-      prev.innerHTML=html;
-
-      // Refresh channel list in-place
-      if(hasSaved){ invalidateCache(); refreshCfgChannels(); loadBudgetOverview(); }
-    })
-    .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');prev.innerHTML='';});
-}
-
-// Country budget CSV/Excel import
-function importBudgetFile(inp){
-  const file=inp.files[0]; if(!file){return;} inp.value='';
-  const fd=new FormData(); fd.append('file',file);
-  const res=g('budget-import-result');
-  res.innerHTML=`<div style="padding:10px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
-    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing budgets...</div>`;
-  fetch('/api/import/budgets',{method:'POST',body:fd})
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.error){toast(d.error,'err');res.innerHTML=`<div style="padding:10px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${d.error}</div>`;return;}
-
-      let html=`<div style="border:1px solid var(--subr);border-radius:var(--r);overflow:hidden;margin-top:8px">
-        <div style="padding:9px 14px;background:var(--sub);display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12px;font-weight:600;color:var(--su)">&#x2713; Updated ${d.saved} budget${d.saved===1?'':'s'}${d.skipped>0?` · <span style="color:var(--t3);font-weight:400">${d.skipped} skipped</span>`:''}</span>
-          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
-        </div>`;
-      if(d.rows && d.rows.length>0){
-        html+=`<div class="tbl-wrap"><table>
-          <thead><tr style="background:rgba(20,112,58,.06)"><th style="color:var(--su)">Country</th><th style="color:var(--su)">Quarter</th><th style="color:var(--su);text-align:right">Total Budget</th></tr></thead>
-          <tbody>${d.rows.map((r,i)=>`<tr style="${i%2===0?'background:rgba(20,112,58,.03)':''}">
-            <td>${esc(r.country)}</td><td>${esc(r.quarter)}</td>
-            <td class="mono" style="text-align:right;color:var(--ac)">$${fmt(r.total)}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>`;
-      }
-      html+=`</div>`;
-      res.innerHTML=html;
-
-      // Refresh budget total for current selection without full rebuild
-      invalidateCache();
-      refreshCfgBudgetTotal();
-      loadBudgetOverview();
-    })
-    .catch(e=>{toast('Upload failed: '+(e.message||'unknown error'),'err');res.innerHTML='';});
-}
-
-// Partial refresh: reload budget data and update only the channel list section
-async function refreshCfgChannels(){
-  try{
-    const data = await api(`/api/budget/${country}/${quarter}`);
-    budgetData = data;
-    _cache.budget = data;
-    _cache.cacheKey = cacheKey();
-    const chCfg = g('ch-cfg');
-    if(chCfg){
-      if(data.channels.length===0){
-        chCfg.innerHTML=`<div style="text-align:center;padding:28px;border:2px dashed var(--b);border-radius:var(--r);color:var(--t3);font-size:13px">No channels yet — add your first one below</div>`;
-      } else {
-        chCfg.innerHTML=data.channels.map(ch=>{
-          const acts=ch.activities||[];
-          const actRows=acts.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 32px;border-top:1px dashed var(--b)">
-            <span style="font-size:11px;color:var(--t3)">&#x2514;</span>
-            <span style="font-size:12px;flex:1;color:var(--t2)">${esc(a.name)}</span>
-            <button class="btn btn-g btn-xs" onclick="openAM('${a.id}','${esc(a.name)}','${ch.id}')">&#x270E;</button>
-            <button class="btn btn-d btn-xs" onclick="deleteAct('${a.id}')">&#x2715;</button>
-          </div>`).join('');
-          return `<div class="cfg-row" style="flex-direction:column;align-items:stretch;padding:0">
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:500;font-size:13px">${esc(ch.name)}</div>
-                <div class="mono" style="font-size:12px;color:var(--ac)">$${fmt(ch.budget)} · <span style="color:var(--t3);font-family:'Sora',sans-serif;font-size:11px">${acts.length} activit${acts.length===1?'y':'ies'}</span></div>
-              </div>
-              <button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>
-              <button class="btn btn-g btn-xs" onclick="openCM('${ch.id}','${esc(ch.name)}',${ch.budget})">Edit</button>
-              <button class="btn btn-d btn-xs" onclick="delChan('${ch.id}')">&#x2715;</button>
-            </div>
-            ${actRows}
-          </div>`;
-        }).join('');
-      }
-      // Also update allocation bar
-      rebuildOverviewCard();
-    }
-  }catch(e){/* silent — import result already shown */}
-}
-
-// Partial refresh: reload budget total and update overview card + input
-async function refreshCfgBudgetTotal(){
-  try{
-    const data = await api(`/api/budget/${country}/${quarter}`);
-    budgetData = data;
-    _cache.budget = data;
-    _cache.cacheKey = cacheKey();
-    // Update input
-    const totInput = g('cfg-tot');
-    if(totInput) totInput.value = data.total||'';
-    // Rebuild overview card
-    rebuildOverviewCard();
-  }catch(e){/* silent */}
-}
-
-// Rebuild just the overview card from current budgetData
-function rebuildOverviewCard(){
-  const el = g('cfg-overview');
-  if(!el) return;
-  const totCh = budgetData.channels.reduce((s,c)=>s+(c.budget||0),0);
-  const hasBudget = budgetData.total>0;
-  const hasChannels = budgetData.channels.length>0;
-  const deviation = totCh - (budgetData.total||0);
-  const devAbs = Math.abs(deviation);
-  const over = totCh>(budgetData.total||0)&&budgetData.total>0;
-  const p2 = budgetData.total>0?pct(totCh,budgetData.total):0;
-  const rem = (budgetData.total||0)-totCh;
-
-  if(!hasBudget && !hasChannels){
-    el.className=''; el.style.cssText='margin-bottom:0'; el.innerHTML=''; return;
-  }
-  el.className='card'; el.style.cssText='padding:16px 18px;margin-bottom:14px';
-  const devClr = deviation===0?'var(--su)':deviation>0?'var(--da)':'var(--wa)';
-  const devLbl = deviation===0?'Balanced':deviation>0?'Over-allocated':'Under-allocated';
-  const devIcon = deviation===0?'&#x2713;':'&#x26A0;';
-
-  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:${(hasBudget&&hasChannels)?'12':'0'}px">
-    <div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Country Budget</div>
-      <div class="mono" style="font-size:22px;font-weight:500;color:${hasBudget?'var(--t)':'var(--t3)'}">${hasBudget?'$'+fmt(budgetData.total):'Not set'}</div>
-    </div>
-    <div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Channel Allocated</div>
-      <div class="mono" style="font-size:22px;font-weight:500;color:${hasChannels?'var(--ac)':'var(--t3)'}">${hasChannels?'$'+fmt(totCh):'No channels'}</div>
-      ${hasChannels?`<div style="font-size:11px;color:var(--t3);margin-top:2px">${budgetData.channels.length} channel${budgetData.channels.length===1?'':'s'}</div>`:''}
-    </div>
-    ${(hasBudget&&hasChannels)?`<div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
-      <div class="mono" style="font-size:22px;font-weight:500;color:${devClr}">${deviation>0?'+':''}$${fmt(deviation)}</div>
-      <div style="font-size:11px;color:${devClr};margin-top:2px">${devIcon} ${devLbl}</div>
-    </div>`:`<div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:5px">Deviation</div>
-      <div style="font-size:13px;color:var(--t3);margin-top:4px">${!hasBudget&&hasChannels?'Set country budget to see deviation':!hasChannels&&hasBudget?'Add channels to see deviation':'—'}</div>
-    </div>`}
-  </div>
-  ${(hasBudget&&hasChannels)?`<div class="bbar-wrap" style="margin-top:4px"><div class="bbar" style="width:${p2}%;background:${over?'var(--da)':'var(--ac)'}"></div></div>
-  <div style="font-size:11px;color:var(--t3);margin-top:4px;display:flex;justify-content:space-between">
-    <span>${p2}% allocated</span>
-    <span>Remaining: $${fmt(Math.max(0,rem))}</span>
-  </div>`:''}
-  ${over?`<div class="warn-banner" style="margin-top:10px">&#x26A0; Channel budgets exceed country total by $${fmt(devAbs)}. Adjust channel budgets or increase the country total.</div>`:''}`;
-}
-
-// Mapping
-function addMapRow(){
-  const tbody=g('map-tbody');if(!tbody)return;
-  const i=tbody.querySelectorAll('tr').length;
-  const buOpts=BU_LIST.map(b=>`<option value="${b}">${esc(b.replace('Marketing : ','').replace(/\s*-\s*613\d{6}XXX/,''))}</option>`).join('');
-  const fcOpts=FIN_CATS.map(f=>`<option value="${f}">${esc(f)}</option>`).join('');
-  const mcOpts=MKT_CATS.map(m=>`<option value="${m}">${esc(m)}</option>`).join('');
-  const tr=document.createElement('tr');tr.id=`mrow-${i}`;tr.style.borderBottom='1px solid var(--b)';
-  tr.innerHTML=`
-    <td style="padding:6px 10px"><input type="text" id="mk-${i}" placeholder="keyword" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--b);border-radius:4px"></td>
-    <td style="padding:6px 10px"><select id="mbu-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${buOpts}</select></td>
-    <td style="padding:6px 10px"><select id="mfc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${fcOpts}</select></td>
-    <td style="padding:6px 10px"><select id="mmc-${i}" style="width:100%;padding:4px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px;appearance:none"><option value="">Select...</option>${mcOpts}</select></td>
-    <td style="padding:6px 10px;text-align:center"><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:13px">&#x2715;</button></td>`;
-  tbody.appendChild(tr);
-}
-async function saveMapping(){
-  const rows=Array.from(g('map-tbody')?.querySelectorAll('tr')||[]).map(tr=>{
-    const i=tr.id.replace('mrow-','');
-    return{channel_keyword:g(`mk-${i}`)?.value?.trim().toLowerCase()||'',bu:g(`mbu-${i}`)?.value||'',finance_cat:g(`mfc-${i}`)?.value||'',marketing_cat:g(`mmc-${i}`)?.value||''};
-  }).filter(r=>r.channel_keyword);
-  try{await api('/api/mapping',{method:'POST',body:JSON.stringify(rows)});toast(`Mapping saved — ${rows.length} rules ✓`,'ok');}
-  catch(e){toast(e.message,'err');}
-}
-
-// Set mapping select values after DOM render
-function setMapSelects(rows){
-  rows.forEach((r,i)=>{
-    const bu=g(`mbu-${i}`),fc=g(`mfc-${i}`),mc=g(`mmc-${i}`);
-    if(bu)bu.value=r.bu||'';if(fc)fc.value=r.finance_cat||'';if(mc)mc.value=r.marketing_cat||'';
-  });
-}
-
-// ── VENDOR MANAGEMENT ─────────────────────────────────────────
-async function loadVendorList(){
-  const el=g('vendor-list');
-  if(!el) return;
-  try{
-    const vendors=await api('/api/vendors');
-    window._vendorList=vendors;
-    if(!vendors.length){
-      el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t3)">No vendors yet. Add one above or import from CSV.</div>';
-      return;
-    }
-    // Group by scope
-    const global=vendors.filter(v=>v.country==='GLOBAL');
-    const local=vendors.filter(v=>v.country!=='GLOBAL');
-    const byMkt={};
-    local.forEach(v=>{if(!byMkt[v.country])byMkt[v.country]=[];byMkt[v.country].push(v);});
-
-    let html='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
-    global.forEach(v=>{
-      html+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--s2);border:1px solid var(--b);border-radius:20px;font-size:12px">
-        ${esc(v.name)}
-        <button onclick="delVendor('${v.id}')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:11px;padding:0 2px;line-height:1" title="Delete">&#x2715;</button>
-      </span>`;
-    });
-    html+='</div>';
-
-    if(Object.keys(byMkt).length>0){
-      html+='<div style="margin-top:6px">';
-      for(const [mkt,vlist] of Object.entries(byMkt).sort()){
-        html+=`<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em">${mkt}</span>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">`;
-        vlist.forEach(v=>{
-          html+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--acb);border:1px solid var(--acbr);border-radius:20px;font-size:11px;color:var(--ac)">
-            ${esc(v.name)}
-            <button onclick="delVendor('${v.id}')" style="background:none;border:none;cursor:pointer;color:var(--ac);font-size:10px;padding:0 2px;line-height:1;opacity:.6" title="Delete">&#x2715;</button>
-          </span>`;
-        });
-        html+='</div></div>';
-      }
-      html+='</div>';
-    }
-    el.innerHTML=html;
-  }catch(e){
-    el.innerHTML=`<div style="color:var(--t3)">Could not load vendors.</div>`;
-  }
-}
-
-function openAddVendor(){
-  g('vendor-add-form').style.display='block';
-  setTimeout(()=>g('v-name')?.focus(),50);
-}
-
-async function saveNewVendor(){
-  const name=g('v-name')?.value?.trim();
-  const scope=g('v-scope')?.value||'GLOBAL';
-  if(!name){toast('Enter a vendor name','err');return;}
-  try{
-    await api('/api/vendors',{method:'POST',body:JSON.stringify({name,country:scope})});
-    g('v-name').value='';
-    g('vendor-add-form').style.display='none';
-    toast('Vendor added ✓','ok');
-    loadVendorList();
-  }catch(e){toast(e.message||'Failed','err');}
-}
-
-async function delVendor(id){
-  if(!confirm('Delete this vendor?')) return;
-  try{
-    await api(`/api/vendors/${id}`,{method:'DELETE'});
-    toast('Vendor deleted','info');
-    loadVendorList();
-  }catch(e){toast(e.message||'Failed','err');}
-}
-
-function importVendorFile(inp){
-  const file=inp.files[0]; if(!file){return;} inp.value='';
-  const fd=new FormData(); fd.append('file',file);
-  const res=g('vendor-import-result');
-  res.innerHTML=`<div style="padding:8px;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:6px">
-    <div class="spinner" style="width:16px;height:16px;margin:0;border-width:2px"></div> Importing...</div>`;
-  fetch('/api/vendors/import',{method:'POST',body:fd})
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.error){toast(d.error,'err');res.innerHTML=`<div style="padding:8px 12px;border-radius:var(--r);background:var(--dab);border:1px solid var(--dabr);font-size:12px;color:var(--da)">&#x26A0; ${esc(d.error)}</div>`;return;}
-      const hasSaved=d.saved>0;
-      let html=`<div style="border:1px solid ${hasSaved?'var(--subr)':'var(--wabr)'};border-radius:var(--r);overflow:hidden">
-        <div style="padding:9px 14px;background:${hasSaved?'var(--sub)':'var(--wab)'};display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:12px;font-weight:600;color:${hasSaved?'var(--su)':'var(--wa)'}">${hasSaved?'&#x2713; Imported '+d.saved+' vendor'+(d.saved===1?'':'s'):'No new vendors'}${d.skipped>0?' · '+d.skipped+' skipped (duplicates)':''}</span>
-          <button class="btn btn-xs btn-g" onclick="this.closest('[style]').parentElement.innerHTML=''">Dismiss</button>
-        </div>`;
-      if(d.rows&&d.rows.length>0){
-        html+=`<div style="padding:8px 14px;display:flex;flex-wrap:wrap;gap:4px">${d.rows.map(r=>`<span style="padding:3px 8px;background:var(--s2);border-radius:20px;font-size:11px">${esc(r.name)} <span style="color:var(--t3)">${r.country}</span></span>`).join('')}</div>`;
-      }
-      html+='</div>';
-      res.innerHTML=html;
-      if(hasSaved) loadVendorList();
-    })
-    .catch(e=>{toast('Upload failed','err');res.innerHTML='';});
-}
-
-// ── RECONCILIATION VIEW (Quarter → Country → Channel → Activity → Items) ──
+// ===================================================================
+// RECONCILIATION (simplified)
+// ===================================================================
 async function renderRecon(){
   g('page').innerHTML='<div class="spinner"></div>';
   try{
-    let reconCountry = window._reconCountry || '';
-    const tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="font-size:16px;font-weight:600">&#x2696; Reconciliation</div>
-        <select onchange="window._reconCountry=this.value;renderRecon()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">
-          <option value="" ${reconCountry===''?'selected':''}>All Markets</option>
-          ${MARKETS.map(m=>`<option value="${m}" ${m===reconCountry?'selected':''}>${m}</option>`).join('')}
-        </select>
-        <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderRecon()">${q}</button>`).join('')}</div>
-      </div>
-      <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export</a>
-    </div>`;
-
-    let data = await api(`/api/reconciliation/${quarter}`);
-    // Filter by country if selected
-    if(reconCountry) data = data.filter(r=>r.country===reconCountry);
-    if(!data.length){
-      g('page').innerHTML=tb+`<div style="text-align:center;padding:48px;color:var(--t3)">No data for ${reconCountry||'any market'} in ${quarter}.</div>`;
-      return;
-    }
-
-    // Summary
+    let data=await api(`/api/reconciliation/${quarter}`);
     const totBud=data.reduce((s,r)=>s+r.plan_budget,0);
     const totPln=data.reduce((s,r)=>s+r.sum_planned,0);
-    const totCon=data.reduce((s,r)=>s+r.sum_confirmed,0);
     const totAct=data.reduce((s,r)=>s+r.sum_actual,0);
     const totVar=totAct-totPln;
-    const varClr=totVar===0?'var(--su)':totVar>0?'var(--da)':'var(--su)';
-    const totFlags=data.reduce((s,r)=>s+r.flags.no_actual+r.flags.no_jira+r.flags.no_invoice,0);
+    const varClr=totVar>0?'var(--da)':'var(--su)';
 
-    let stats=`<div class="stats-row" style="margin-bottom:14px">
-      <div class="stat"><div class="stat-l">${quarter} Budget</div><div class="stat-v">$${fmt(totBud)}</div></div>
+    let html=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:600">&#x2696; Reconciliation</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderRecon()">${q}</button>`).join('')}</div>
+        <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export</a>
+      </div>
+    </div>`;
+
+    html+=`<div class="stats-row"><div class="stat"><div class="stat-l">Budget</div><div class="stat-v">$${fmt(totBud)}</div></div>
       <div class="stat"><div class="stat-l">Planned</div><div class="stat-v" style="color:var(--go)">$${fmt(totPln)}</div></div>
-      <div class="stat"><div class="stat-l">Confirmed</div><div class="stat-v" style="color:var(--in)">$${fmt(totCon)}</div></div>
       <div class="stat"><div class="stat-l">Actual</div><div class="stat-v" style="color:var(--su)">$${fmt(totAct)}</div></div>
       <div class="stat"><div class="stat-l">Variance</div><div class="stat-v" style="color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</div></div>
     </div>`;
 
-    // Expandable country cards
-    // Status helper: Completed if actual>0, In Progress if confirmed>0, else Planned
-    const rcStatus=(pln,con,act)=>{
-      if(act>0) return '<span class="badge b-green">Completed</span>';
-      if(con>0) return '<span class="badge b-blue">In Progress</span>';
-      if(pln>0) return '<span class="badge b-gold">Planned</span>';
-      return '<span style="color:var(--t3)">—</span>';
-    };
-    // Variance color: red if over budget (actual > planned), green if under/equal
-    const rcVarClr=(v)=>v>0?'var(--da)':'var(--su)';
+    if(!data.length){html+=`<div style="text-align:center;padding:48px;color:var(--t3)">No data for ${quarter}</div>`;g('page').innerHTML=html;return;}
 
-    let cards=data.map(r=>{
-      const v=r.var_plan_vs_actual;
-      const vc=rcVarClr(v);
-      const fl=r.flags;
-      const notes=[];
-      if(fl.no_jira>0) notes.push(`${fl.no_jira} no JIRA`);
-      if(fl.no_invoice>0) notes.push(`${fl.no_invoice} no invoice`);
+    html+=`<div class="card" style="overflow:hidden"><div class="tbl-wrap"><table>
+      <thead><tr><th>Market</th><th style="text-align:right">Budget</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Variance</th><th>Entries</th><th>Flags</th></tr></thead>
+      <tbody>${data.map(r=>{
+        const v=r.var_plan_vs_actual;const vc=v>0?'var(--da)':'var(--su)';
+        const fl=r.flags;const notes=[];
+        if(fl.no_jira>0) notes.push(`${fl.no_jira} no JIRA`);
+        if(fl.no_invoice>0) notes.push(`${fl.no_invoice} no invoice`);
+        return `<tr><td style="font-weight:600">${esc(r.country)}</td>
+          <td class="mono" style="text-align:right">$${fmt(r.plan_budget)}</td>
+          <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.sum_planned)}</td>
+          <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.sum_actual)}</td>
+          <td class="mono" style="text-align:right;color:${vc}">${v>0?'+':''}$${fmt(v)}</td>
+          <td>${r.entries}</td>
+          <td style="font-size:10px;color:var(--wa)">${notes.join(' · ')}</td></tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr><td style="font-weight:600">${quarter} Total</td>
+        <td class="mono" style="text-align:right;font-weight:600">$${fmt(totBud)}</td>
+        <td class="mono" style="text-align:right;font-weight:600;color:var(--go)">$${fmt(totPln)}</td>
+        <td class="mono" style="text-align:right;font-weight:600;color:var(--su)">$${fmt(totAct)}</td>
+        <td class="mono" style="text-align:right;font-weight:600;color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</td>
+        <td>${data.reduce((s,r)=>s+r.entries,0)}</td><td></td></tr></tfoot>
+    </table></div></div>`;
 
-      // Channel rows (expandable)
-      let chHtml='';
-      (r.channels_data||[]).forEach(ch=>{
-        const chVar=ch.actual-ch.planned;
-        const chNotes=[];
-        const allChItems=[...(ch.unassigned||[])];
-        (ch.activities||[]).forEach(a=>allChItems.push(...(a.items||[])));
+    g('page').innerHTML=html;
+  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;}
+}
 
-        // Activities within channel
-        let actHtml='';
-        (ch.activities||[]).forEach(act=>{
-          const aVar=act.actual-act.planned;
-          // Line items
-          const itemRows=act.items.map(it=>{
-            const iv=it.actual-it.planned;
-            const itNotes=[];
-            if(!it.jira) itNotes.push('No JIRA');
-            if(it.actual>0&&!it.approved) itNotes.push('No invoice');
-            return `<tr>
-              <td style="padding-left:56px;font-size:11px"><span style="color:var(--t3)">${mLbl(it.month)}</span> ${esc(it.description||'')}</td>
-              <td style="font-size:11px;color:var(--t2)">${esc(it.vendor||'—')}</td>
-              <td>${rcStatus(it.planned,it.confirmed,it.actual)}</td>
-              <td class="mono" style="text-align:right;color:var(--go);font-size:11px">$${fmt(it.planned)}</td>
-              <td class="mono" style="text-align:right;color:var(--in);font-size:11px">$${fmt(it.confirmed)}</td>
-              <td class="mono" style="text-align:right;color:var(--su);font-size:11px">$${fmt(it.actual)}</td>
-              <td class="mono" style="text-align:right;color:${rcVarClr(iv)};font-size:11px">${iv!==0?(iv>0?'+':'')+('$'+fmt(iv)):'—'}</td>
-              <td style="font-size:10px;color:var(--wa)">${itNotes.join(' · ')||''}</td>
-            </tr>`;
-          }).join('');
+// ===================================================================
+// CONFIG PAGE (with category management)
+// ===================================================================
+async function renderCfg(){
+  g('page').innerHTML='<div class="spinner"></div>';
+  try{
+    budgetData = await api(`/api/budget/${country}/${quarter}`);
+    _cache.budget=budgetData;_cache.cacheKey=cacheKey();
 
-          actHtml+=`<tr class="rc-act rc-act-${ch.id}" style="display:none;cursor:pointer;background:var(--s2)" onclick="document.querySelectorAll('.rc-item-${act.id}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
-            <td style="padding-left:40px;font-weight:500;font-size:12px">&#x2514; ${esc(act.name)} <span style="font-size:10px;color:var(--t3)">&#x25BC;</span></td>
-            <td></td>
-            <td>${rcStatus(act.planned,act.confirmed,act.actual)}</td>
-            <td class="mono" style="text-align:right;color:var(--go);font-size:12px">$${fmt(act.planned)}</td>
-            <td class="mono" style="text-align:right;color:var(--in);font-size:12px">$${fmt(act.confirmed)}</td>
-            <td class="mono" style="text-align:right;color:var(--su);font-size:12px">$${fmt(act.actual)}</td>
-            <td class="mono" style="text-align:right;color:${rcVarClr(aVar)};font-size:12px">${aVar!==0?(aVar>0?'+':'')+('$'+fmt(aVar)):'—'}</td>
-            <td></td>
-          </tr>${itemRows.replace(/class=""/g,'').split('</tr>').map((tr,i)=>tr?tr.replace('<tr','<tr class="rc-item-'+act.id+'" style="display:none"'):'').join('</tr>')}`;
-        });
+    let html=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select onchange="country=this.value;renderCfg()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>
+        <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderCfg()">${q}</button>`).join('')}</div>
+      </div>
+      <span style="font-size:12px;color:var(--t3)">Configuring <strong>${country} · ${quarter}</strong></span>
+    </div>`;
 
-        // Unassigned items
-        let unassHtml='';
-        if(ch.unassigned&&ch.unassigned.length>0){
-          unassHtml=ch.unassigned.map(it=>{
-            const iv=it.actual-it.planned;
-            const itNotes=[];
-            if(!it.jira) itNotes.push('No JIRA');
-            if(it.actual>0&&!it.approved) itNotes.push('No invoice');
-            return `<tr class="rc-act rc-act-${ch.id}" style="display:none">
-              <td style="padding-left:40px;font-size:11px;font-style:italic"><span style="color:var(--t3)">${mLbl(it.month)}</span> ${esc(it.description||'—')}</td>
-              <td style="font-size:11px;color:var(--t2)">${esc(it.vendor||'—')}</td>
-              <td>${rcStatus(it.planned,it.confirmed,it.actual)}</td>
-              <td class="mono" style="text-align:right;color:var(--go);font-size:11px">$${fmt(it.planned)}</td>
-              <td class="mono" style="text-align:right;color:var(--in);font-size:11px">$${fmt(it.confirmed)}</td>
-              <td class="mono" style="text-align:right;color:var(--su);font-size:11px">$${fmt(it.actual)}</td>
-              <td class="mono" style="text-align:right;color:${rcVarClr(iv)};font-size:11px">${iv!==0?(iv>0?'+':'')+('$'+fmt(iv)):'—'}</td>
-              <td style="font-size:10px;color:var(--wa)">${itNotes.join(' · ')||''}</td>
-            </tr>`;
-          }).join('');
-        }
+    // Budget + Channels
+    html+=`<div class="card" style="padding:18px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Set Country Budget</div>
+      <div style="display:flex;align-items:flex-end;gap:10px">
+        <div class="field" style="max-width:280px"><label>${country} · ${quarter} Total Budget (USD)</label>
+          <input type="number" id="cfg-tot" min="0" step="1000" value="${budgetData.total||''}"></div>
+        <button class="btn btn-p btn-sm" onclick="saveTot()">Save</button>
+      </div>
+    </div>`;
 
-        // Channel row — show X/Y completed count
-        const chTotalItems = allChItems.length;
-        const chDoneItems = allChItems.filter(it=>it.actual>0).length;
-        const chProgress = chTotalItems>0 ? `<span class="mono" style="font-size:11px;color:${chDoneItems===chTotalItems&&chTotalItems>0?'var(--su)':'var(--t2)'}">${chDoneItems}/${chTotalItems}</span>` : '<span style="color:var(--t3)">—</span>';
-        chHtml+=`<tr class="rc-ch rc-ch-${r.country}" style="display:none;cursor:pointer;background:var(--s2)" onclick="document.querySelectorAll('.rc-act-${ch.id}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
-          <td style="padding-left:24px;font-weight:500;font-size:12.5px">${esc(ch.name)} <span style="font-size:10px;color:var(--t3);font-weight:400">&#x25BC;</span></td>
-          <td class="mono" style="text-align:right;font-size:11px;color:var(--ac)">$${fmt(ch.budget)}</td>
-          <td>${chProgress}</td>
-          <td class="mono" style="text-align:right;color:var(--go)">$${fmt(ch.planned)}</td>
-          <td class="mono" style="text-align:right;color:var(--in)">$${fmt(ch.confirmed)}</td>
-          <td class="mono" style="text-align:right;color:var(--su)">$${fmt(ch.actual)}</td>
-          <td class="mono" style="text-align:right;color:${rcVarClr(chVar)}">${chVar!==0?(chVar>0?'+':'')+('$'+fmt(chVar)):'—'}</td>
-          <td></td>
-        </tr>${actHtml}${unassHtml}`;
+    // Channels
+    const chList=budgetData.channels.length?budgetData.channels.map(ch=>{
+      const acts=ch.activities||[];
+      return `<div class="cfg-row" style="flex-direction:column;align-items:stretch;padding:0">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+          <div style="flex:1"><div style="font-weight:500">${esc(ch.name)}</div>
+            <div class="mono" style="font-size:12px;color:var(--ac)">$${fmt(ch.budget)} · ${acts.length} activities</div></div>
+          <button class="btn btn-g btn-xs" onclick="openAM(null,'','${ch.id}')">+ Activity</button>
+          <button class="btn btn-g btn-xs" onclick="openCM('${ch.id}','${esc(ch.name)}',${ch.budget})">Edit</button>
+          <button class="btn btn-d btn-xs" onclick="delChan('${ch.id}')">&#x2715;</button>
+        </div>
+        ${acts.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 32px;border-top:1px dashed var(--b)">
+          <span style="font-size:11px;color:var(--t3)">&#x2514;</span>
+          <span style="font-size:12px;flex:1">${esc(a.name)}</span>
+          <button class="btn btn-g btn-xs" onclick="openAM('${a.id}','${esc(a.name)}','${ch.id}')">&#x270E;</button>
+          <button class="btn btn-d btn-xs" onclick="deleteAct('${a.id}')">&#x2715;</button>
+        </div>`).join('')}
+      </div>`;
+    }).join(''):'<div style="text-align:center;padding:20px;border:2px dashed var(--b);border-radius:var(--r);color:var(--t3)">No channels yet</div>';
+
+    html+=`<div class="card" style="padding:18px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:8px">Channels & Activities</div>
+      <div style="margin-bottom:10px">${chList}</div>
+      <button class="btn btn-g btn-sm" onclick="openCM(null,'',0)">+ Add Channel</button>
+    </div>`;
+
+    // Category Management
+    html+=`<div class="card" style="padding:18px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);margin-bottom:6px">Category Management</div>
+      <div style="font-size:12px;color:var(--t3);margin-bottom:12px">Add, edit or remove BU accounts, finance categories, and marketing categories used across all entry forms.</div>
+      <div id="cat-mgmt" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div id="cat-bu"><div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:6px">BU Accounts</div><div class="spinner" style="width:20px;height:20px;margin:10px auto"></div></div>
+        <div id="cat-finance"><div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:6px">Finance Categories</div><div class="spinner" style="width:20px;height:20px;margin:10px auto"></div></div>
+        <div id="cat-marketing"><div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:6px">Marketing Categories</div><div class="spinner" style="width:20px;height:20px;margin:10px auto"></div></div>
+      </div>
+    </div>`;
+
+    g('page').innerHTML=html;
+    loadCategoryEditor();
+  }catch(e){g('page').innerHTML=`<p style="color:var(--da);padding:24px">${e.message}</p>`;}
+}
+
+async function saveTot(){
+  const total=parseFloat(g('cfg-tot')?.value)||0;
+  budgetData.total=total;_cache.budget=budgetData;
+  toast('Budget saved ✓','ok');
+  api(`/api/budget/${country}/${quarter}`,{method:'POST',body:JSON.stringify({total})}).catch(()=>toast('Sync error','err'));
+}
+
+// Category Editor
+async function loadCategoryEditor(){
+  try{
+    const cats = await api('/api/categories');
+    ['bu','finance','marketing'].forEach(type=>{
+      const el=g(`cat-${type}`);
+      if(!el) return;
+      const items = cats[type]||[];
+      const label = type==='bu'?'BU Accounts':type==='finance'?'Finance Categories':'Marketing Categories';
+      let inner=`<div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:6px">${label} (${items.length})</div>`;
+      inner+=`<div style="max-height:300px;overflow-y:auto;margin-bottom:8px">`;
+      items.forEach(item=>{
+        const val=typeof item==='string'?item:item.value;
+        const id=typeof item==='string'?null:item.id;
+        inner+=`<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-bottom:1px solid var(--b);font-size:11px">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(val)}">${esc(val.replace('Marketing : ','').replace(/\\s*-\\s*613\\d{6}XXX/,''))}</span>
+          ${id?`<button onclick="deleteCat('${id}','${type}')" style="background:none;border:none;cursor:pointer;color:var(--t3);font-size:11px;padding:0 3px" title="Delete">&#x2715;</button>`:''}
+        </div>`;
       });
-
-      // Country row — show X/Y completed count across all channels
-      const mktAllItems=[];
-      (r.channels_data||[]).forEach(ch=>{
-        (ch.activities||[]).forEach(a=>mktAllItems.push(...(a.items||[])));
-        if(ch.unassigned) mktAllItems.push(...ch.unassigned);
-      });
-      if(r.orphan_entries) mktAllItems.push(...r.orphan_entries);
-      const mktTotal=mktAllItems.length;
-      const mktDone=mktAllItems.filter(it=>it.actual>0).length;
-      const mktProgress=mktTotal>0?`<span class="mono" style="font-size:11px;color:${mktDone===mktTotal&&mktTotal>0?'var(--su)':'var(--t2)'}">${mktDone}/${mktTotal}</span>`:'<span style="color:var(--t3)">—</span>';
-
-      return `<tr style="cursor:pointer" onclick="document.querySelectorAll('.rc-ch-${r.country}').forEach(el=>el.style.display=el.style.display==='none'?'':'none')">
-        <td style="font-weight:600">${esc(r.country)} <span style="font-size:10px;color:var(--t3);font-weight:400">&#x25BC;</span></td>
-        <td class="mono" style="text-align:right">$${fmt(r.plan_budget)}</td>
-        <td>${mktProgress}</td>
-        <td class="mono" style="text-align:right;color:var(--go)">$${fmt(r.sum_planned)}</td>
-        <td class="mono" style="text-align:right;color:var(--in)">$${fmt(r.sum_confirmed)}</td>
-        <td class="mono" style="text-align:right;color:var(--su)">$${fmt(r.sum_actual)}</td>
-        <td class="mono" style="text-align:right;color:${vc}">${v>0?'+':''}$${fmt(v)}</td>
-        <td style="font-size:10px;color:var(--wa)">${notes.join(' · ')||''}</td>
-      </tr>${chHtml}`;
-    }).join('');
-
-    let tbl=`<div class="card" style="overflow:hidden">
-      <div class="tbl-wrap"><table>
-        <thead><tr>
-          <th style="width:24%">Market / Channel / Activity</th><th style="text-align:right">Budget</th><th>Status</th>
-          <th style="text-align:right">Planned</th><th style="text-align:right">Confirmed</th>
-          <th style="text-align:right">Actual</th><th style="text-align:right">Variance</th>
-          <th>Notes</th>
-        </tr></thead>
-        <tbody>${cards}</tbody>
-        <tfoot><tr>
-          <td style="font-weight:600">${quarter} Total</td>
-          <td class="mono" style="text-align:right;font-weight:600">$${fmt(totBud)}</td>
-          <td></td>
-          <td class="mono" style="text-align:right;font-weight:600;color:var(--go)">$${fmt(totPln)}</td>
-          <td class="mono" style="text-align:right;font-weight:600;color:var(--in)">$${fmt(totCon)}</td>
-          <td class="mono" style="text-align:right;font-weight:600;color:var(--su)">$${fmt(totAct)}</td>
-          <td class="mono" style="text-align:right;font-weight:600;color:${varClr}">${totVar>0?'+':''}$${fmt(totVar)}</td>
-          <td></td>
-        </tr></tfoot>
-      </table></div>
-    </div>
-    <div style="font-size:11px;color:var(--t3);margin-top:8px">Click a market to expand channels → click a channel to see activities → click an activity to see line items.</div>`;
-
-    g('page').innerHTML=tb+stats+tbl;
+      inner+=`</div>`;
+      inner+=`<div style="display:flex;gap:4px">
+        <input type="text" id="new-cat-${type}" placeholder="Add new..." style="flex:1;padding:5px 8px;font-size:11px;border:1px solid var(--b);border-radius:4px">
+        <button class="btn btn-p btn-xs" onclick="addCat('${type}')">+</button>
+      </div>`;
+      el.innerHTML=inner;
+    });
   }catch(e){
-    g('page').innerHTML=`<p style="color:var(--da);padding:24px">${esc(e.message)}</p>`;
+    ['bu','finance','marketing'].forEach(type=>{
+      const el=g(`cat-${type}`);
+      if(el) el.innerHTML=`<div style="color:var(--t3);font-size:11px">Failed to load</div>`;
+    });
   }
 }
 
-// ── KEYBOARD ───────────────────────────────────────────────────
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeEM();closeCM();closeAM();closeDM();}
-});
+async function addCat(type){
+  const inp=g(`new-cat-${type}`);
+  const value=inp?.value?.trim();
+  if(!value){toast('Enter a value','err');return;}
+  try{
+    await api('/api/categories',{method:'POST',body:JSON.stringify({type,value})});
+    inp.value='';
+    toast('Added ✓','ok');
+    loadCategoryEditor();
+    loadCategories(); // Refresh global lists
+  }catch(e){toast(e.message||'Failed','err');}
+}
 
-// ── BOOT ───────────────────────────────────────────────────────
-initNav();
-renderDash();
-// Preload vendors for entry form dropdown
-api('/api/vendors').then(v=>{window._vendorList=v;}).catch(()=>{window._vendorList=[];});
+async function deleteCat(id,type){
+  if(!confirm('Delete this category?')) return;
+  try{
+    await api(`/api/categories/${id}`,{method:'DELETE'});
+    toast('Deleted','info');
+    loadCategoryEditor();
+    loadCategories();
+  }catch(e){toast(e.message||'Failed','err');}
+}
+
+// Keyboard
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEM();closeCM();closeAM();closeDM();}});
+
+// Boot
+async function boot(){
+  await loadCategories();
+  initNav();
+  renderDash();
+  api('/api/vendors').then(v=>{window._vendorList=v;}).catch(()=>{window._vendorList=[];});
+}
+boot();
 </script>
 </body>
 </html>
