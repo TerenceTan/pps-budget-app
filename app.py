@@ -27,7 +27,7 @@ SHEET_ID             = os.environ.get("SHEET_ID", "13TMeZ3pqdUQr2WRMG5G70xchZKfm
 PM_SHEET_ID          = os.environ.get("PM_SHEET_ID", "1_gqrbmEvmVYu3_Bu5IrJa2zKE9DWcZZQEmMvYnfuR4I")
 ADMIN_MARKET         = "APAC"
 
-MARKETS  = ["CN","HKG","ID","IN","MN","MY","PH","SG","TH","TW","VN","TW/SG/MY/MN"]
+MARKETS  = ["CN","HKG","ID","IN","MN","MY","PH","SG","TH","TW","VN","APAC"]
 QUARTERS = ["Q1","Q2","Q3","Q4"]
 
 # Invoice storage on disk
@@ -1050,7 +1050,7 @@ def api_delete_entry(entry_id):
 def api_channel_template():
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(['Country', 'Quarter', 'Channel Name', 'Budget (USD)'])
+    w.writerow(['Country', 'Quarter', 'Channel Name', 'Budget (AUD)'])
     w.writerow(['TH', 'Q1', 'Performance Marketing', 50000])
     w.writerow(['TH', 'Q1', 'Affiliate', 30000])
     return send_file(io.BytesIO(out.getvalue().encode('utf-8-sig')),
@@ -1062,7 +1062,7 @@ def api_channel_template():
 def api_budget_template():
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(['Country', 'Quarter', 'Total Budget (USD)'])
+    w.writerow(['Country', 'Quarter', 'Total Budget (AUD)'])
     for country in ['TH','SG','MY','CN','HKG','ID','IN','VN','PH','TW','MN']:
         for q in ['Q1','Q2','Q3','Q4']:
             w.writerow([country, q, 0])
@@ -1149,7 +1149,7 @@ def api_parse_bulk():
 def api_bulk_template():
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(['Month','Activity','Description','Vendor','Planned (USD)','Confirmed (USD)','Actual (USD)','JIRA Task','Notes'])
+    w.writerow(['Month','Activity','Description','Vendor','Planned (AUD)','Confirmed (AUD)','Actual (AUD)','JIRA Task','Notes'])
     w.writerow(['Jul 2025','Google Search Q1','Brand keywords','Google',5000,'',3200,'MKT-001',''])
     return send_file(
         io.BytesIO(out.getvalue().encode('utf-8-sig')),
@@ -1891,7 +1891,7 @@ def api_pm_sync():
                 round(spend, 2),  # planned
                 0,  # confirmed
                 round(spend, 2),  # actual
-                "", channel_group, f"PM Sync [{group_tag}] {channel_group} | {now[:10]}",
+                "", mapped_channel, f"PM Sync [{group_tag}] {channel_group} | {now[:10]}",
                 "False",
                 "[]", "[]",
                 session.get("username", "pm_sync"), now, now,
@@ -1928,7 +1928,7 @@ def api_pm_sync():
             round(spend, 2),  # planned = spend
             0,  # confirmed
             round(spend, 2),  # actual = spend
-            "", channel_group, f"Auto-synced from PM Sheet on {now[:10]}",
+            "", mapped_channel, f"Auto-synced from PM Sheet on {now[:10]}",
             "False",
             "[]", "[]",
             session.get("username", "pm_sync"), now, now,
@@ -2023,34 +2023,56 @@ def api_pm_auto_sync():
         existing_activities = safe_get_records(ws_activities, TAB_ACTIVITIES)
         now = datetime.utcnow().isoformat()
 
+        # Only sync countries that have a budget configured
+        all_budgets_list = get_records_cached(TAB_BUDGETS)
+        budget_countries = set(str(b.get("country","")) for b in all_budgets_list if float(b.get("total_budget") or 0) > 0)
+        # Also include countries in MARKETS as valid
+        valid_countries = budget_countries | set(MARKETS)
+
         # Build lookup for existing PM entries: country|channel_group|month → entry row index + data
+        # Reverse map: mapped_channel → list of channel_groups
+        reverse_ch_map = defaultdict(set)
+        for cg, mp in PM_CHANNEL_MAP.items():
+            reverse_ch_map[mp.get("channel_name","")].add(cg)
+
         existing_pm = {}
         for idx, e in enumerate(existing_entries):
             eid = str(e.get("id",""))
-            # Only match PM-synced entries (id starts with pm_)
             if not eid.startswith("pm_"):
                 continue
             co = str(e.get("country",""))
             mo = str(e.get("month",""))
-            # Try vendor field first (channel_group stored here)
             vendor = str(e.get("vendor","")).strip()
-            # Also check description for "PM Sync: {channel_group}" or "{channel_group}: $..."
             desc = str(e.get("description","")).strip()
-            channel_group_from_desc = ""
-            if desc.startswith("PM Sync: "):
-                channel_group_from_desc = desc[9:].strip()
-            elif ": $" in desc:
-                channel_group_from_desc = desc.split(": $")[0].strip()
+            act_name = str(e.get("activity_name","")).strip()
 
-            # Use vendor if it matches a known PM channel, otherwise use description
+            # Extract channel_group from various fields
             known_channels = set(PM_CHANNEL_MAP.keys())
             cg = ""
+
+            # 1. Check if vendor IS a channel_group name (old format)
             if vendor in known_channels:
                 cg = vendor
-            elif channel_group_from_desc in known_channels:
-                cg = channel_group_from_desc
-            elif vendor:
-                cg = vendor  # fallback to vendor even if not in known list
+            # 2. Check description: "RedNote: $8,114 AUD" or "PM Sync: RedNote"
+            elif ": $" in desc:
+                cg_candidate = desc.split(": $")[0].strip()
+                if cg_candidate in known_channels:
+                    cg = cg_candidate
+            elif desc.startswith("PM Sync: "):
+                cg_candidate = desc[9:].strip()
+                if cg_candidate in known_channels:
+                    cg = cg_candidate
+            # 3. Check activity_name: "CN FY26 Q3 - RedNote - Jan 26"
+            if not cg and " - " in act_name:
+                parts_act = act_name.split(" - ")
+                if len(parts_act) >= 2:
+                    cg_candidate = parts_act[1].strip()
+                    if cg_candidate in known_channels:
+                        cg = cg_candidate
+            # 4. Reverse lookup: vendor is mapped_channel, find matching channel_groups
+            if not cg and vendor in reverse_ch_map:
+                # Can't determine exact channel_group, skip dedup for these
+                pass
 
             if cg and co and mo:
                 ekey = f"{co}|{cg}|{mo}"
@@ -2062,6 +2084,11 @@ def api_pm_auto_sync():
             parts = agg_key.split("|")
             country, channel_group, month_key, quarter = parts[0], parts[1], parts[2], parts[3]
             spend = round(vals["spend"], 2)
+
+            # Skip countries not in the tracker
+            if country not in valid_countries:
+                skipped += 1
+                continue
 
             mapping = PM_CHANNEL_MAP.get(channel_group, PM_CHANNEL_MAP.get("Others", {}))
             mapped_channel = mapping.get("channel_name", "Performance Marketing (PM)")
@@ -2119,9 +2146,11 @@ def api_pm_auto_sync():
                 # Check if anything needs updating
                 needs_update = False
                 old_act_id = str(existing["entry"].get("activity_id","")).strip()
+                old_vendor = str(existing["entry"].get("vendor","")).strip()
                 spend_changed = abs(spend - old_spend) >= 0.01
+                vendor_wrong = old_vendor != mapped_channel
 
-                if not old_act_id or spend_changed:
+                if not old_act_id or spend_changed or vendor_wrong:
                     needs_update = True
 
                 if not needs_update:
@@ -2135,16 +2164,19 @@ def api_pm_auto_sync():
                         note_parts.append(f"${old_spend:.0f}->${spend:.0f}")
                     if not old_act_id:
                         note_parts.append(f"assigned to {activity_name}")
+                    if vendor_wrong:
+                        note_parts.append(f"vendor: {old_vendor}->{mapped_channel}")
                     new_notes = f"Updated {' | '.join(note_parts)} on {now[:10]} | {old_notes}"[:500]
 
                     if spend_changed:
                         ws_entries.update_cell(sheet_row, 13, spend)   # planned
                         ws_entries.update_cell(sheet_row, 15, spend)   # actual
-                    # Always backfill activity assignment
+                    # Always backfill activity + channel + vendor
                     ws_entries.update_cell(sheet_row, 5, channel_id)     # channel_id
                     ws_entries.update_cell(sheet_row, 6, mapped_channel) # channel_name
                     ws_entries.update_cell(sheet_row, 7, activity_id)    # activity_id
                     ws_entries.update_cell(sheet_row, 8, activity_name)  # activity_name
+                    ws_entries.update_cell(sheet_row, 17, mapped_channel) # vendor = mapped channel name
                     ws_entries.update_cell(sheet_row, 18, new_notes)     # notes
                     ws_entries.update_cell(sheet_row, 24, now)           # updated_at
                     updated += 1
@@ -2198,7 +2230,7 @@ def api_pm_auto_sync():
                 spend,  # planned
                 0,      # confirmed
                 spend,  # actual
-                "", channel_group, f"Auto-synced {now[:10]}",
+                "", mapped_channel, f"Auto-synced {now[:10]}",
                 "False",
                 "[]", "[]",
                 session.get("username", "pm_auto"), now, now,
@@ -2284,7 +2316,7 @@ def api_export():
     w = csv.writer(out)
     w.writerow(["Country","Quarter","Month","Channel","Activity",
                 "BU","Finance Category","Marketing Category","Description",
-                "Planned (USD)","Confirmed (USD)","Actual (USD)",
+                "Planned (AUD)","Confirmed (AUD)","Actual (AUD)",
                 "JIRA","Vendor","Notes","Approved","Invoices","Entered By","Updated At"])
     for r in rows:
         inv_count = len(json.loads(r.get("invoice_names") or "[]"))

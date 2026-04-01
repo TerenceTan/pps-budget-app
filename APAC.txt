@@ -1,0 +1,9 @@
+Country,Quarter,Channel Name,Budget (USD)
+APAC,Q1,Performance Marketing,120000
+APAC,Q1,Programmatic,80000
+APAC,Q1,Paid Social,90000
+APAC,Q1,Search (PPC),110000
+APAC,Q1,Affiliate,60000
+APAC,Q1,Direct Buys / Media,70000
+APAC,Q1,KOL / Influencer,50000
+APAC,Q1,CRM / Retention,30000
