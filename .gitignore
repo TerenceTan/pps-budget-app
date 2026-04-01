@@ -3,3 +3,6 @@ credentials.json
 __pycache__/
 *.pyc
 static/uploads/
+input/
+output/
+.DS_Store
