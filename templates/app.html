@@ -1039,7 +1039,7 @@ function openEM(entryId,chanId,actId){
       <div class="field"><label>Description</label>
         <input type="text" id="m-desc" value="${esc(e?.description||'')}" placeholder="Brief description..."></div>
     </div>
-    <div class="sdiv"><span>Budget (USD)</span></div>
+    <div class="sdiv"><span>Budget (AUD)</span></div>
     <div class="fg fg3">
       <div class="field"><label>Planned<span class="req">*</span></label><input type="number" id="m-pln" min="0" step="0.01" value="${e?.planned??''}"><span class="err-msg">Required</span></div>
       <div class="field"><label>Confirmed</label><input type="number" id="m-con" min="0" step="0.01" value="${e?.confirmed??''}"></div>
@@ -1197,7 +1197,7 @@ function openCM(id,name,budget){
   g('chm-ttl').textContent=id?'Edit Channel':'Add Channel';
   g('chm-body').innerHTML=`<div class="fg fg1">
     <div class="field"><label>Channel Name<span class="req">*</span></label><input type="text" id="cm-name" value="${esc(name||'')}"><span class="err-msg">Required</span></div>
-    <div class="field"><label>Budget (USD)<span class="req">*</span></label><input type="number" id="cm-bud" min="0" step="1000" value="${budget||''}"><span class="err-msg">Required</span></div>
+    <div class="field"><label>Budget (AUD)<span class="req">*</span></label><input type="number" id="cm-bud" min="0" step="1000" value="${budget||''}"><span class="err-msg">Required</span></div>
   </div>`;
   g('ov-ch').classList.add('open');setTimeout(()=>g('cm-name')?.focus(),50);
 }
@@ -1353,7 +1353,7 @@ async function renderCfg(){
 
         <div style="background:var(--s2);border-radius:var(--r);padding:14px">
           <div style="font-weight:600;font-size:12px;margin-bottom:6px">Country Budgets</div>
-          <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Upload CSV with columns: Country, Quarter, Total Budget (USD). Updates existing budgets or creates new ones.</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Upload CSV with columns: Country, Quarter, Total Budget (AUD). Updates existing budgets or creates new ones.</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
             <label class="btn btn-p btn-sm" style="cursor:pointer"><span>&#x2191; Upload CSV</span><input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="uploadBudgets(this)"></label>
             <a href="/api/budget_template" class="btn btn-g btn-sm">&#x2193; Template</a>
@@ -1363,7 +1363,7 @@ async function renderCfg(){
 
         <div style="background:var(--s2);border-radius:var(--r);padding:14px">
           <div style="font-weight:600;font-size:12px;margin-bottom:6px">Channel Budgets</div>
-          <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Upload CSV with columns: Country, Quarter, Channel Name, Budget (USD). Skips duplicates.</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Upload CSV with columns: Country, Quarter, Channel Name, Budget (AUD). Skips duplicates.</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
             <label class="btn btn-p btn-sm" style="cursor:pointer"><span>&#x2191; Upload CSV</span><input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="uploadChannels(this)"></label>
             <a href="/api/channel_template" class="btn btn-g btn-sm">&#x2193; Template</a>
@@ -1417,17 +1417,25 @@ async function uploadBudgets(inp){
   const fd=new FormData();
   fd.append('file',inp.files[0]);
   const res=g('cfg-bud-result');
-  if(res) res.innerHTML='<span style="color:var(--in)">Uploading...</span>';
+  if(res) res.innerHTML='<span style="color:var(--in)">Uploading '+esc(inp.files[0].name)+'...</span>';
   try{
     const r=await fetch('/api/import/budgets',{method:'POST',body:fd});
     const d=await r.json();
+    console.log('Budget import result:', d);
     if(!r.ok) throw new Error(d.error||'Upload failed');
-    if(res) res.innerHTML='<span style="color:var(--su)">'+d.saved+' budgets saved'+(d.skipped>0?' · '+d.skipped+' skipped':'')+'</span>';
+    var detail='';
+    if(d.rows && d.rows.length>0){
+      detail='<div style="margin-top:6px;max-height:120px;overflow-y:auto">';
+      d.rows.forEach(function(r){detail+='<div style="font-size:10px;color:var(--t2)">'+esc(r.country)+' '+esc(r.quarter)+': $'+fmt(r.total)+'</div>'});
+      detail+='</div>';
+    }
+    if(res) res.innerHTML='<span style="color:var(--su)">'+d.saved+' budgets saved'+(d.skipped>0?' · '+d.skipped+' skipped':'')+'</span>'+detail;
     invalidateCache();
     toast(d.saved+' country budgets imported','ok');
-    setTimeout(function(){renderCfg()},500);
+    setTimeout(function(){_cache.cacheKey=null;renderCfg()},1200);
   }catch(e){
-    if(res) res.innerHTML='<span style="color:var(--da)">'+esc(e.message)+'</span>';
+    console.error('Budget upload error:', e);
+    if(res) res.innerHTML='<span style="color:var(--da)">Error: '+esc(e.message)+'</span>';
     toast(e.message||'Upload failed','err');
   }
   inp.value='';
@@ -1438,20 +1446,28 @@ async function uploadChannels(inp){
   const fd=new FormData();
   fd.append('file',inp.files[0]);
   const res=g('cfg-ch-result');
-  if(res) res.innerHTML='<span style="color:var(--in)">Uploading...</span>';
+  if(res) res.innerHTML='<span style="color:var(--in)">Uploading '+esc(inp.files[0].name)+'...</span>';
   try{
     const r=await fetch('/api/import/channels',{method:'POST',body:fd});
     const d=await r.json();
+    console.log('Channel import result:', d);
     if(!r.ok) throw new Error(d.error||'Upload failed');
     var msg=d.saved+' channels saved';
     if(d.skipped_dups>0) msg+=' · '+d.skipped_dups+' duplicates skipped';
     if(d.skipped_invalid>0) msg+=' · '+d.skipped_invalid+' invalid rows';
-    if(res) res.innerHTML='<span style="color:var(--su)">'+msg+'</span>';
+    var detail='';
+    if(d.rows && d.rows.length>0){
+      detail='<div style="margin-top:6px;max-height:120px;overflow-y:auto">';
+      d.rows.forEach(function(r){detail+='<div style="font-size:10px;color:var(--t2)">'+esc(r.country)+' '+esc(r.quarter)+': '+esc(r.name)+' $'+fmt(r.budget)+'</div>'});
+      detail+='</div>';
+    }
+    if(res) res.innerHTML='<span style="color:var(--su)">'+msg+'</span>'+detail;
     invalidateCache();
     toast(msg,'ok');
-    setTimeout(function(){renderCfg()},500);
+    setTimeout(function(){_cache.cacheKey=null;renderCfg()},1200);
   }catch(e){
-    if(res) res.innerHTML='<span style="color:var(--da)">'+esc(e.message)+'</span>';
+    console.error('Channel upload error:', e);
+    if(res) res.innerHTML='<span style="color:var(--da)">Error: '+esc(e.message)+'</span>';
     toast(e.message||'Upload failed','err');
   }
   inp.value='';
