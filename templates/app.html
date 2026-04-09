@@ -377,7 +377,7 @@ function buildDash(){
 
   let tb=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
-  if(ROLE!=='country') tb+=`<select onchange="country=this.value;renderDash()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>`;
+  if(ROLE!=='country' || MARKETS.length>1) tb+=`<select onchange="country=this.value;renderDash()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>`;
   else tb+=`<span style="font-weight:600;font-size:13px;padding:6px 0">${country}</span>`;
   tb+=`<div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderDash()">${q}</button>`).join('')}</div></div>
     <div style="display:flex;gap:8px">
