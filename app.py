@@ -6,7 +6,10 @@ Run:  python app.py
 import os, json, uuid, base64, io, csv
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, send_file
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash as _gen_ph, check_password_hash
+
+def generate_password_hash(password):
+    return _gen_ph(password, method='pbkdf2:sha256')
 from collections import defaultdict
 
 from config import *
@@ -18,6 +21,12 @@ import api_pm
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+@app.after_request
+def add_no_cache(response):
+    if 'text/html' in response.content_type:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 INVOICE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "invoices")
 os.makedirs(INVOICE_DIR, exist_ok=True)
 app.register_blueprint(api_pm.bp)

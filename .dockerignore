@@ -1,0 +1,12 @@
+.git
+.gitignore
+.ebextensions
+.ebignore
+.env
+.DS_Store
+credentials.json
+__pycache__
+*.pyc
+*.pyo
+input/
+output/

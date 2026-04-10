@@ -1,0 +1,50 @@
+{
+  "family": "budget-flask",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::292828418386:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::292828418386:role/budget-flask-task-role",
+  "containerDefinitions": [
+    {
+      "name": "budget-flask",
+      "image": "292828418386.dkr.ecr.ap-southeast-1.amazonaws.com/budget-flask:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "SHEET_ID",
+          "value": "13TMeZ3pqdUQr2WRMG5G70xchZKfmiPVOShZChqbUsv4"
+        },
+        {
+          "name": "PM_SHEET_ID",
+          "value": "1_gqrbmEvmVYu3_Bu5IrJa2zKE9DWcZZQEmMvYnfuR4I"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:292828418386:secret:budget-app/secret-key"
+        },
+        {
+          "name": "GOOGLE_CREDS_JSON",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-1:292828418386:secret:budget-app/google-credentials"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/budget-flask",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "essential": true
+    }
+  ]
+}

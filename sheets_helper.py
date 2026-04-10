@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Google Sheets read/write helpers with caching."""
-import time, gspread
+import os, json, time, tempfile, gspread
 from google.oauth2.service_account import Credentials
 from config import *
 
@@ -9,12 +9,18 @@ CACHE_TTL = 30
 _gc = None; _gc_ts = 0; _GC_TTL = 600
 _sh = None; _sh_ts = 0
 
+def _get_creds():
+    raw = os.environ.get("GOOGLE_CREDS_JSON", "")
+    if raw:
+        info = json.loads(raw)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
+    return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
 def get_gc():
     global _gc, _gc_ts
     now = time.time()
     if _gc is None or (now - _gc_ts) > _GC_TTL:
-        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        _gc = gspread.authorize(creds); _gc_ts = now
+        _gc = gspread.authorize(_get_creds()); _gc_ts = now
     return _gc
 
 def get_spreadsheet():

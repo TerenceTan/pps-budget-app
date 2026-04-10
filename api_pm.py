@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """BigQuery PM data sync - preview, manual sync, auto sync."""
-import uuid, time
+import os, json, uuid, time
 from datetime import datetime
 from collections import defaultdict
 from flask import Blueprint, request, jsonify, session
@@ -14,7 +14,12 @@ from auth import require_login, require_admin
 bp = Blueprint('pm', __name__)
 
 def _get_bq_client():
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    raw = os.environ.get("GOOGLE_CREDS_JSON", "")
+    if raw:
+        info = json.loads(raw)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     return bigquery.Client(project=BQ_PROJECT_ID, credentials=creds, location=BQ_LOCATION)
 
 def _bq_fetch_pm_data(q_filter=None):

@@ -3,7 +3,10 @@
 from datetime import datetime
 from functools import wraps
 from flask import session, jsonify
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash as _gen_ph
+
+def generate_password_hash(password):
+    return _gen_ph(password, method='pbkdf2:sha256')
 from config import *
 from sheets_helper import get_sheet, safe_get_records, invalidate_cache
 
