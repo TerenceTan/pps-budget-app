@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: budget_admin
+      POSTGRES_PASSWORD: localdev123
+      POSTGRES_DB: budget_flask
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budget_admin -d budget_flask"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://budget_admin:localdev123@db:5432/budget_flask
+      USE_POSTGRES: "true"
+      SHEET_ID: "13TMeZ3pqdUQr2WRMG5G70xchZKfmiPVOShZChqbUsv4"
+      BQ_PROJECT_ID: "gen-lang-client-0602500310"
+      BQ_DATASET: "pepperstone_apac"
+      BQ_TABLE: "ad_performance"
+      BQ_LOCATION: "asia-southeast1"
+      GOOGLE_CREDS_JSON: "${GOOGLE_CREDS_JSON}"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

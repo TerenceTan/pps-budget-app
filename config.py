@@ -2,7 +2,10 @@
 """Configuration constants and channel mappings."""
 import os
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is required. Set it before starting the app.")
+USE_POSTGRES = os.environ.get("USE_POSTGRES", "").lower() in ("true", "1", "yes")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -48,18 +51,12 @@ VENDOR_HEADERS = ["id","name","country","added_by","created_at"]
 USER_HEADERS = ["username","password_hash","display_name","role","markets","created_at"]
 CATEGORY_HEADERS = ["id","type","value","sort_order","created_at"]
 
-# Default users
-DEFAULT_USERS = [
-    ("pepper", "APAC@123", "Pepper (Admin)", "admin", "ALL"),
-    ("affiliate", "Affiliate@123", "Affiliate Manager", "editor", "ALL"),
-    ("performance", "Performance@123", "Performance Marketing", "editor", "ALL"),
-    ("campaigns", "Campaigns@123", "Campaign Manager", "editor", "ALL"),
-    ("th_sales", "TH@123", "Thailand Sales", "country", "TH"),
-    ("cn_sales", "CN@123", "China Sales", "country", "CN"),
-    ("hkg_sales", "HKG@123", "Hong Kong Sales", "country", "HKG"),
-    ("vn_sales", "VN@123", "Vietnam Sales", "country", "VN"),
-    ("roapac_sales", "ROAPAC@123", "Rest of APAC Sales", "country", "ID,IN,MY,SG,MN,PH,TW"),
-]
+# Default users are no longer hardcoded. On a fresh install, seed_users() will
+# bootstrap a single admin account using BOOTSTRAP_ADMIN_PASSWORD from the
+# environment; all other users must be created through the admin UI afterwards.
+# Historical default-password seeding was removed in 2026-04 — the old values
+# are considered permanently compromised (see docs/SECURITY_AUDIT.md H-1).
+DEFAULT_USERS = []
 
 DEFAULT_MAPPING = [
     ("performance",  "Marketing : Programmatic - 613000009XXX",          "PPC",                  "PPC / Search"),

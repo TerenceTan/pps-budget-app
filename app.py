@@ -19,6 +19,10 @@ from auth import (seed_users, seed_categories, seed_mapping, get_user, get_all_u
                   require_login, require_admin, check_country_access)
 import api_pm
 
+if USE_POSTGRES:
+    import db as pgdb
+    print("[MODE] PostgreSQL mode enabled")
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
@@ -73,8 +77,12 @@ def logout(): session.clear(); return redirect("/")
 @require_login
 def api_get_categories():
     try:
-        rows = get_records_cached(TAB_CATEGORIES)
-        if not rows: seed_categories(); invalidate_cache(TAB_CATEGORIES); rows = get_records_cached(TAB_CATEGORIES)
+        if USE_POSTGRES:
+            rows = pgdb.get_all(TAB_CATEGORIES)
+            if not rows: seed_categories(); rows = pgdb.get_all(TAB_CATEGORIES)
+        else:
+            rows = get_records_cached(TAB_CATEGORIES)
+            if not rows: seed_categories(); invalidate_cache(TAB_CATEGORIES); rows = get_records_cached(TAB_CATEGORIES)
         result = {"bu":[],"finance":[],"marketing":[]}
         for r in rows:
             t = r.get("type","")
@@ -89,16 +97,21 @@ def api_get_categories():
 def api_add_category():
     d=request.get_json(); ct=d.get("type",""); v=d.get("value","").strip()
     if not ct or not v or ct not in ("bu","finance","marketing"): return jsonify({"error":"Invalid"}),400
-    rows=get_records_cached(TAB_CATEGORIES)
+    rows = pgdb.get_all(TAB_CATEGORIES) if USE_POSTGRES else get_records_cached(TAB_CATEGORIES)
     if any(r.get("type")==ct and str(r.get("value","")).lower()==v.lower() for r in rows): return jsonify({"error":"Exists"}),400
     cid=f"cat_{uuid.uuid4().hex[:8]}"; s=len([r for r in rows if r.get("type")==ct])
-    get_sheet(TAB_CATEGORIES).append_row([cid,ct,v,s,datetime.utcnow().isoformat()]); invalidate_cache(TAB_CATEGORIES)
+    if USE_POSTGRES:
+        pgdb.insert_category(cid,ct,v,s,datetime.utcnow().isoformat())
+    else:
+        get_sheet(TAB_CATEGORIES).append_row([cid,ct,v,s,datetime.utcnow().isoformat()]); invalidate_cache(TAB_CATEGORIES)
     return jsonify({"id":cid,"type":ct,"value":v,"sort_order":s})
 
 @app.route("/api/categories/<cat_id>", methods=["DELETE"])
 @require_login
 @require_admin
 def api_delete_category(cat_id):
+    if USE_POSTGRES:
+        pgdb.delete_category(cat_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_CATEGORIES); rows=safe_get_records(ws,TAB_CATEGORIES)
     idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==cat_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -110,13 +123,24 @@ def api_delete_category(cat_id):
 def api_get_budget(country, quarter):
     if not check_country_access(country): return jsonify({"error":"Forbidden"}),403
     try:
-        brows=rows_for_cached(TAB_BUDGETS,country=country,quarter=quarter); total=float(brows[0]["total_budget"]) if brows else 0
-        channels=sorted([{"id":r["id"],"name":r["name"],"budget":float(r["budget"] or 0),"sort_order":int(r.get("sort_order") or 0)} for r in rows_for_cached(TAB_CHANNELS,country=country,quarter=quarter)],key=lambda x:x["sort_order"])
-        aa=rows_for_cached(TAB_ACTIVITIES,country=country,quarter=quarter)
+        if USE_POSTGRES:
+            brows=pgdb.get_filtered(TAB_BUDGETS,country=country,quarter=quarter)
+            chrows=pgdb.get_filtered(TAB_CHANNELS,country=country,quarter=quarter)
+            aa=pgdb.get_filtered(TAB_ACTIVITIES,country=country,quarter=quarter)
+            mr=pgdb.get_all(TAB_MAPPING)
+        else:
+            brows=rows_for_cached(TAB_BUDGETS,country=country,quarter=quarter)
+            chrows=rows_for_cached(TAB_CHANNELS,country=country,quarter=quarter)
+            aa=rows_for_cached(TAB_ACTIVITIES,country=country,quarter=quarter)
+            mr=get_records_cached(TAB_MAPPING)
+        total=float(brows[0]["total_budget"]) if brows else 0
+        channels=sorted([{"id":r["id"],"name":r["name"],"budget":float(r["budget"] or 0),"sort_order":int(r.get("sort_order") or 0)} for r in chrows],key=lambda x:x["sort_order"])
         for ch in channels: ch["activities"]=sorted([{"id":a["id"],"name":a["name"],"sort_order":int(a.get("sort_order") or 0)} for a in aa if str(a["channel_id"])==str(ch["id"])],key=lambda x:x["sort_order"])
         try:
-            mr=get_records_cached(TAB_MAPPING)
-            if not mr: seed_mapping(); invalidate_cache(TAB_MAPPING); mr=get_records_cached(TAB_MAPPING)
+            if not mr:
+                seed_mapping()
+                if USE_POSTGRES: mr=pgdb.get_all(TAB_MAPPING)
+                else: invalidate_cache(TAB_MAPPING); mr=get_records_cached(TAB_MAPPING)
             mapping=[{"channel_keyword":r["channel_keyword"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"]} for r in mr if r.get("channel_keyword")]
         except: mapping=[{"channel_keyword":kw,"bu":bu,"finance_cat":fc,"marketing_cat":mc} for kw,bu,fc,mc in DEFAULT_MAPPING]
         return jsonify({"total":total,"channels":channels,"mapping":mapping})
@@ -126,35 +150,55 @@ def api_get_budget(country, quarter):
 @require_login
 @require_admin
 def api_save_budget(country, quarter):
-    total=float(request.get_json().get("total",0)); ws=get_sheet(TAB_BUDGETS); rows=safe_get_records(ws,TAB_BUDGETS); now=datetime.utcnow().isoformat()
-    idx=next((i for i,r in enumerate(rows) if r["country"]==country and r["quarter"]==quarter),None)
-    if idx is not None: ws.update(f"A{idx+2}:E{idx+2}",[[rows[idx]["id"],country,quarter,total,now]])
-    else: ws.append_row([str(uuid.uuid4())[:8],country,quarter,total,now])
-    invalidate_cache(TAB_BUDGETS); return jsonify({"ok":True})
+    total=float(request.get_json().get("total",0)); now=datetime.utcnow().isoformat()
+    if USE_POSTGRES:
+        bid=str(uuid.uuid4())[:8]; pgdb.upsert_budget(bid,country,quarter,total,now)
+    else:
+        ws=get_sheet(TAB_BUDGETS); rows=safe_get_records(ws,TAB_BUDGETS)
+        idx=next((i for i,r in enumerate(rows) if r["country"]==country and r["quarter"]==quarter),None)
+        if idx is not None: ws.update(f"A{idx+2}:E{idx+2}",[[rows[idx]["id"],country,quarter,total,now]])
+        else: ws.append_row([str(uuid.uuid4())[:8],country,quarter,total,now])
+        invalidate_cache(TAB_BUDGETS)
+    return jsonify({"ok":True})
 
 # -- CHANNELS -------------------------------------------------------------
 @app.route("/api/channels", methods=["POST"])
 @require_login
 @require_admin
 def api_add_channel():
-    d=request.get_json(); ex=rows_for(TAB_CHANNELS,country=d["country"],quarter=d["quarter"]); cid="ch_"+str(uuid.uuid4())[:8]
-    get_sheet(TAB_CHANNELS).append_row([cid,d["country"],d["quarter"],d["name"],float(d.get("budget",0)),len(ex),datetime.utcnow().isoformat()])
-    invalidate_cache(TAB_CHANNELS); return jsonify({"id":cid,"name":d["name"],"budget":float(d.get("budget",0)),"sort_order":len(ex)})
+    d=request.get_json(); cid="ch_"+str(uuid.uuid4())[:8]
+    if USE_POSTGRES:
+        ex=pgdb.get_filtered(TAB_CHANNELS,country=d["country"],quarter=d["quarter"])
+        pgdb.insert_channel(cid,d["country"],d["quarter"],d["name"],float(d.get("budget",0)),len(ex),datetime.utcnow().isoformat())
+    else:
+        ex=rows_for(TAB_CHANNELS,country=d["country"],quarter=d["quarter"])
+        get_sheet(TAB_CHANNELS).append_row([cid,d["country"],d["quarter"],d["name"],float(d.get("budget",0)),len(ex),datetime.utcnow().isoformat()])
+        invalidate_cache(TAB_CHANNELS)
+    return jsonify({"id":cid,"name":d["name"],"budget":float(d.get("budget",0)),"sort_order":len(ex)})
 
 @app.route("/api/channels/<ch_id>", methods=["PUT"])
 @require_login
 @require_admin
 def api_update_channel(ch_id):
-    d=request.get_json(); ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
-    idx=next((i for i,r in enumerate(rows) if r["id"]==ch_id),None)
-    if idx is None: return jsonify({"error":"Not found"}),404
-    r=rows[idx]; ws.update(f"A{idx+2}:G{idx+2}",[[ch_id,r["country"],r["quarter"],d.get("name",r["name"]),float(d.get("budget",r["budget"])),r.get("sort_order",0),r.get("created_at","")]])
-    invalidate_cache(TAB_CHANNELS); return jsonify({"ok":True})
+    d=request.get_json()
+    if USE_POSTGRES:
+        rows=pgdb.get_filtered(TAB_CHANNELS); r=next((r for r in rows if str(r["id"])==ch_id),None)
+        if not r: return jsonify({"error":"Not found"}),404
+        pgdb.update_channel(ch_id,r["country"],r["quarter"],d.get("name",r["name"]),float(d.get("budget",r["budget"])),r.get("sort_order",0),r.get("created_at",""))
+    else:
+        ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
+        idx=next((i for i,r in enumerate(rows) if r["id"]==ch_id),None)
+        if idx is None: return jsonify({"error":"Not found"}),404
+        r=rows[idx]; ws.update(f"A{idx+2}:G{idx+2}",[[ch_id,r["country"],r["quarter"],d.get("name",r["name"]),float(d.get("budget",r["budget"])),r.get("sort_order",0),r.get("created_at","")]])
+        invalidate_cache(TAB_CHANNELS)
+    return jsonify({"ok":True})
 
 @app.route("/api/channels/<ch_id>", methods=["DELETE"])
 @require_login
 @require_admin
 def api_delete_channel(ch_id):
+    if USE_POSTGRES:
+        pgdb.delete_channel(ch_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
     idx=next((i for i,r in enumerate(rows) if r["id"]==ch_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -164,22 +208,37 @@ def api_delete_channel(ch_id):
 @app.route("/api/activities", methods=["POST"])
 @require_login
 def api_add_activity():
-    d=request.get_json(); ex=rows_for(TAB_ACTIVITIES,channel_id=d["channel_id"]); aid="act_"+str(uuid.uuid4())[:8]
-    get_sheet(TAB_ACTIVITIES).append_row([aid,d["channel_id"],d["country"],d["quarter"],d["name"],len(ex),datetime.utcnow().isoformat()])
-    invalidate_cache(TAB_ACTIVITIES); return jsonify({"id":aid,"name":d["name"],"sort_order":len(ex)})
+    d=request.get_json(); aid="act_"+str(uuid.uuid4())[:8]
+    if USE_POSTGRES:
+        ex=pgdb.get_filtered(TAB_ACTIVITIES,channel_id=d["channel_id"])
+        pgdb.insert_activity(aid,d["channel_id"],d["country"],d["quarter"],d["name"],len(ex),datetime.utcnow().isoformat())
+    else:
+        ex=rows_for(TAB_ACTIVITIES,channel_id=d["channel_id"])
+        get_sheet(TAB_ACTIVITIES).append_row([aid,d["channel_id"],d["country"],d["quarter"],d["name"],len(ex),datetime.utcnow().isoformat()])
+        invalidate_cache(TAB_ACTIVITIES)
+    return jsonify({"id":aid,"name":d["name"],"sort_order":len(ex)})
 
 @app.route("/api/activities/<act_id>", methods=["PUT"])
 @require_login
 def api_update_activity(act_id):
-    d=request.get_json(); ws=get_sheet(TAB_ACTIVITIES); rows=safe_get_records(ws,TAB_ACTIVITIES)
-    idx=next((i for i,r in enumerate(rows) if r["id"]==act_id),None)
-    if idx is None: return jsonify({"error":"Not found"}),404
-    r=rows[idx]; ws.update(f"A{idx+2}:G{idx+2}",[[act_id,r["channel_id"],r["country"],r["quarter"],d.get("name",r["name"]),r.get("sort_order",0),r.get("created_at","")]])
-    invalidate_cache(TAB_ACTIVITIES); return jsonify({"ok":True})
+    d=request.get_json()
+    if USE_POSTGRES:
+        rows=pgdb.get_all(TAB_ACTIVITIES); r=next((r for r in rows if str(r["id"])==act_id),None)
+        if not r: return jsonify({"error":"Not found"}),404
+        pgdb.update_activity(act_id,r["channel_id"],r["country"],r["quarter"],d.get("name",r["name"]),r.get("sort_order",0),r.get("created_at",""))
+    else:
+        ws=get_sheet(TAB_ACTIVITIES); rows=safe_get_records(ws,TAB_ACTIVITIES)
+        idx=next((i for i,r in enumerate(rows) if r["id"]==act_id),None)
+        if idx is None: return jsonify({"error":"Not found"}),404
+        r=rows[idx]; ws.update(f"A{idx+2}:G{idx+2}",[[act_id,r["channel_id"],r["country"],r["quarter"],d.get("name",r["name"]),r.get("sort_order",0),r.get("created_at","")]])
+        invalidate_cache(TAB_ACTIVITIES)
+    return jsonify({"ok":True})
 
 @app.route("/api/activities/<act_id>", methods=["DELETE"])
 @require_login
 def api_delete_activity(act_id):
+    if USE_POSTGRES:
+        pgdb.delete_activity(act_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_ACTIVITIES); rows=safe_get_records(ws,TAB_ACTIVITIES)
     idx=next((i for i,r in enumerate(rows) if r["id"]==act_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -191,7 +250,8 @@ def api_delete_activity(act_id):
 def api_get_entries(country, quarter):
     if not check_country_access(country): return jsonify({"error":"Forbidden"}),403
     try:
-        return jsonify([{"id":r["id"],"country":r["country"],"quarter":r["quarter"],"month":r["month"],"channel_id":r["channel_id"],"channel_name":r["channel_name"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"],"activity_id":r.get("activity_id",""),"activity_name":r.get("activity_name",""),"description":r["description"],"planned":float(r["planned"] or 0),"confirmed":float(r["confirmed"] or 0),"actual":float(r["actual"] or 0),"jira":r["jira"],"vendor":r["vendor"],"notes":r["notes"],"approved":str(r["approved"]).lower()=="true","invoice_names":json.loads(r["invoice_names"]) if r.get("invoice_names") else [],"entered_by":r["entered_by"],"updated_at":r["updated_at"]} for r in rows_for_cached(TAB_ENTRIES,country=country,quarter=quarter)])
+        rows = pgdb.get_filtered(TAB_ENTRIES,country=country,quarter=quarter) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=country,quarter=quarter)
+        return jsonify([{"id":r["id"],"country":r["country"],"quarter":r["quarter"],"month":r["month"],"channel_id":r["channel_id"],"channel_name":r["channel_name"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"],"activity_id":r.get("activity_id",""),"activity_name":r.get("activity_name",""),"description":r["description"],"planned":float(r["planned"] or 0),"confirmed":float(r["confirmed"] or 0),"actual":float(r["actual"] or 0),"jira":r["jira"],"vendor":r["vendor"],"notes":r["notes"],"approved":str(r["approved"]).lower()=="true","invoice_names":json.loads(r["invoice_names"]) if r.get("invoice_names") else [],"entered_by":r["entered_by"],"updated_at":r["updated_at"]} for r in rows])
     except Exception as e: return jsonify({"error":str(e)}),500
 
 @app.route("/api/entries", methods=["POST"])
@@ -203,8 +263,12 @@ def api_add_entry():
         eid="e_"+str(uuid.uuid4())[:10]; now=datetime.utcnow().isoformat()
         ins=d.get("invoice_names",[]); ids=d.get("invoice_data",[])
         sf=[save_invoice_to_disk(ids[i],eid,n) or "" for i,n in enumerate(ins) if i<len(ids) and ids[i]]
-        get_sheet(TAB_ENTRIES).append_row([eid,co,d.get("quarter",""),d.get("month",""),d.get("channel_id",""),d.get("channel_name",""),d.get("activity_id",""),d.get("activity_name",""),d.get("bu",""),d.get("finance_cat",""),d.get("marketing_cat",""),d.get("description",""),float(d.get("planned") or 0),float(d.get("confirmed") or 0),float(d.get("actual") or 0),d.get("jira",""),d.get("vendor",""),d.get("notes",""),str(d.get("approved",False)),json.dumps(ins),json.dumps(sf),session.get("username",""),now,now])
-        invalidate_cache(TAB_ENTRIES); return jsonify({"id":eid,"ok":True})
+        row_data=[eid,co,d.get("quarter",""),d.get("month",""),d.get("channel_id",""),d.get("channel_name",""),d.get("activity_id",""),d.get("activity_name",""),d.get("bu",""),d.get("finance_cat",""),d.get("marketing_cat",""),d.get("description",""),float(d.get("planned") or 0),float(d.get("confirmed") or 0),float(d.get("actual") or 0),d.get("jira",""),d.get("vendor",""),d.get("notes",""),str(d.get("approved",False)),json.dumps(ins),json.dumps(sf),session.get("username",""),now,now]
+        if USE_POSTGRES:
+            pgdb.insert_entry(row_data)
+        else:
+            get_sheet(TAB_ENTRIES).append_row(row_data); invalidate_cache(TAB_ENTRIES)
+        return jsonify({"id":eid,"ok":True})
     except Exception as e: return jsonify({"error":str(e)}),500
 
 @app.route("/api/entries/<entry_id>", methods=["PUT"])
@@ -212,10 +276,14 @@ def api_add_entry():
 def api_update_entry(entry_id):
     d=request.get_json()
     try:
-        ws=get_sheet(TAB_ENTRIES); rows=safe_get_records(ws,TAB_ENTRIES)
-        idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)),None)
-        if idx is None: return jsonify({"error":"Not found"}),404
-        r=rows[idx]
+        if USE_POSTGRES:
+            r=pgdb.get_entry_by_id(entry_id)
+        else:
+            ws=get_sheet(TAB_ENTRIES); rows=safe_get_records(ws,TAB_ENTRIES)
+            idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)),None)
+            if idx is None: return jsonify({"error":"Not found"}),404
+            r=rows[idx]
+        if not r: return jsonify({"error":"Not found"}),404
         if not check_country_access(str(r.get("country",""))): return jsonify({"error":"Forbidden"}),403
         en=json.loads(str(r.get("invoice_names") or "[]")); ef=json.loads(str(r.get("invoice_data") or "[]"))
         inn=d.get("invoice_names",None); ind=d.get("invoice_data",None)
@@ -228,13 +296,23 @@ def api_update_entry(entry_id):
             inv_n,inv_d=json.dumps(fn),json.dumps(ff)
         else: inv_n,inv_d=json.dumps(en),json.dumps(ef)
         now=datetime.utcnow().isoformat()
-        ws.update(f"A{idx+2}:X{idx+2}",[[entry_id,r.get("country",""),d.get("quarter",r.get("quarter","")),d.get("month",r.get("month","")),d.get("channel_id",r.get("channel_id","")),d.get("channel_name",r.get("channel_name","")),d.get("activity_id",r.get("activity_id","")),d.get("activity_name",r.get("activity_name","")),d.get("bu",r.get("bu","")),d.get("finance_cat",r.get("finance_cat","")),d.get("marketing_cat",r.get("marketing_cat","")),d.get("description",r.get("description","")),float(d.get("planned",r.get("planned",0)) or 0),float(d.get("confirmed",r.get("confirmed",0)) or 0),float(d.get("actual",r.get("actual",0)) or 0),d.get("jira",r.get("jira","")),d.get("vendor",r.get("vendor","")),d.get("notes",r.get("notes","")),str(d.get("approved",str(r.get("approved","")).lower()=="true")),inv_n,inv_d,r.get("entered_by",""),r.get("created_at",""),now]])
-        invalidate_cache(TAB_ENTRIES); return jsonify({"ok":True})
+        row_vals=[r.get("country",""),d.get("quarter",r.get("quarter","")),d.get("month",r.get("month","")),d.get("channel_id",r.get("channel_id","")),d.get("channel_name",r.get("channel_name","")),d.get("activity_id",r.get("activity_id","")),d.get("activity_name",r.get("activity_name","")),d.get("bu",r.get("bu","")),d.get("finance_cat",r.get("finance_cat","")),d.get("marketing_cat",r.get("marketing_cat","")),d.get("description",r.get("description","")),float(d.get("planned",r.get("planned",0)) or 0),float(d.get("confirmed",r.get("confirmed",0)) or 0),float(d.get("actual",r.get("actual",0)) or 0),d.get("jira",r.get("jira","")),d.get("vendor",r.get("vendor","")),d.get("notes",r.get("notes","")),str(d.get("approved",str(r.get("approved","")).lower()=="true")),inv_n,inv_d,r.get("entered_by",""),r.get("created_at",""),now]
+        if USE_POSTGRES:
+            pgdb.update_entry_full(entry_id,row_vals)
+        else:
+            ws.update(f"A{idx+2}:X{idx+2}",[[entry_id]+row_vals])
+            invalidate_cache(TAB_ENTRIES)
+        return jsonify({"ok":True})
     except Exception as e: return jsonify({"error":str(e)}),500
 
 @app.route("/api/entries/<entry_id>", methods=["DELETE"])
 @require_login
 def api_delete_entry(entry_id):
+    if USE_POSTGRES:
+        r=pgdb.get_entry_by_id(entry_id)
+        if not r: return jsonify({"error":"Not found"}),404
+        if session["user"]!=ADMIN_MARKET and str(r.get("country",""))!=session["user"]: return jsonify({"error":"Forbidden"}),403
+        pgdb.delete_entry(entry_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_ENTRIES); rows=safe_get_records(ws,TAB_ENTRIES)
     idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -246,7 +324,7 @@ def api_delete_entry(entry_id):
 @require_login
 def api_get_vendors():
     try:
-        vs=get_records_cached(TAB_VENDORS); u=session.get("user","")
+        vs = pgdb.get_all(TAB_VENDORS) if USE_POSTGRES else get_records_cached(TAB_VENDORS); u=session.get("user","")
         if u!=ADMIN_MARKET: vs=[v for v in vs if v.get("country") in ("GLOBAL",u)]
         seen=set(); ul=[]
         for v in [{"id":v["id"],"name":v["name"],"country":v.get("country","GLOBAL")} for v in vs]:
@@ -261,7 +339,10 @@ def api_add_vendor():
     if not nm: return jsonify({"error":"Required"}),400
     u=session.get("user",""); vc=d.get("country","GLOBAL" if u==ADMIN_MARKET else u)
     vid="v_"+str(uuid.uuid4())[:8]
-    get_sheet(TAB_VENDORS).append_row([vid,nm,vc,u,datetime.utcnow().isoformat()]); invalidate_cache(TAB_VENDORS)
+    if USE_POSTGRES:
+        pgdb.insert_vendor(vid,nm,vc,u,datetime.utcnow().isoformat())
+    else:
+        get_sheet(TAB_VENDORS).append_row([vid,nm,vc,u,datetime.utcnow().isoformat()]); invalidate_cache(TAB_VENDORS)
     return jsonify({"id":vid,"name":nm,"country":vc})
 
 # -- USERS ----------------------------------------------------------------
@@ -278,14 +359,20 @@ def api_add_user():
     d=request.get_json(); un=d.get("username","").strip().lower(); pw=d.get("password","").strip()
     if not un or not pw: return jsonify({"error":"Required"}),400
     if get_user(un): return jsonify({"error":"Exists"}),400
-    get_sheet(TAB_USERS).append_row([un,generate_password_hash(pw),d.get("display_name","").strip() or un,d.get("role","country"),d.get("markets","ALL"),datetime.utcnow().isoformat()])
-    invalidate_cache(TAB_USERS); return jsonify({"ok":True,"username":un})
+    if USE_POSTGRES:
+        pgdb.insert_user(un,generate_password_hash(pw),d.get("display_name","").strip() or un,d.get("role","country"),d.get("markets","ALL"),datetime.utcnow().isoformat())
+    else:
+        get_sheet(TAB_USERS).append_row([un,generate_password_hash(pw),d.get("display_name","").strip() or un,d.get("role","country"),d.get("markets","ALL"),datetime.utcnow().isoformat()])
+        invalidate_cache(TAB_USERS)
+    return jsonify({"ok":True,"username":un})
 
 @app.route("/api/users/<username>", methods=["DELETE"])
 @require_login
 @require_admin
 def api_delete_user(username):
     if username.lower()==session.get("username","").lower(): return jsonify({"error":"Cannot delete self"}),400
+    if USE_POSTGRES:
+        pgdb.delete_user(username); return jsonify({"ok":True})
     ws=get_sheet(TAB_USERS); rows=safe_get_records(ws,TAB_USERS)
     idx=next((i for i,r in enumerate(rows) if str(r.get("username","")).lower()==username.lower()),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -296,8 +383,12 @@ def api_delete_user(username):
 @require_login
 def api_get_mapping():
     try:
-        mr=get_records_cached(TAB_MAPPING)
-        if not mr: seed_mapping(); invalidate_cache(TAB_MAPPING); mr=get_records_cached(TAB_MAPPING)
+        if USE_POSTGRES:
+            mr=pgdb.get_all(TAB_MAPPING)
+            if not mr: seed_mapping(); mr=pgdb.get_all(TAB_MAPPING)
+        else:
+            mr=get_records_cached(TAB_MAPPING)
+            if not mr: seed_mapping(); invalidate_cache(TAB_MAPPING); mr=get_records_cached(TAB_MAPPING)
         return jsonify([{"channel_keyword":r["channel_keyword"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"]} for r in mr if r.get("channel_keyword")])
     except: return jsonify([{"channel_keyword":kw,"bu":bu,"finance_cat":fc,"marketing_cat":mc} for kw,bu,fc,mc in DEFAULT_MAPPING])
 
@@ -308,15 +399,20 @@ def api_reconciliation(quarter):
     try:
         role=session.get("role",""); um=session.get("markets","")
         allowed=None if role in ("admin","editor") or um=="ALL" else set(m.strip() for m in um.split(",") if m.strip())
-        ab=get_records_cached(TAB_BUDGETS); ach=get_records_cached(TAB_CHANNELS); aact=get_records_cached(TAB_ACTIVITIES)
-        qb=[b for b in ab if str(b.get("quarter",""))==quarter]; qe=rows_for_cached(TAB_ENTRIES,quarter=quarter)
+        if USE_POSTGRES:
+            ab=pgdb.get_all(TAB_BUDGETS); ach=pgdb.get_all(TAB_CHANNELS); aact=pgdb.get_all(TAB_ACTIVITIES)
+            qe=pgdb.get_filtered(TAB_ENTRIES,quarter=quarter)
+        else:
+            ab=get_records_cached(TAB_BUDGETS); ach=get_records_cached(TAB_CHANNELS); aact=get_records_cached(TAB_ACTIVITIES)
+            qe=rows_for_cached(TAB_ENTRIES,quarter=quarter)
+        qb=[b for b in ab if str(b.get("quarter",""))==quarter]
         mkts=sorted({str(b["country"]) for b in qb}|{str(e["country"]) for e in qe})
         if allowed: mkts=[m for m in mkts if m in allowed]
         result=[]
         for mkt in mkts:
             br=next((b for b in qb if str(b["country"])==mkt),None); pb=float(br["total_budget"]) if br else 0
             mc=[c for c in ach if str(c.get("country",""))==mkt and str(c.get("quarter",""))==quarter]
-            me=rows_for_cached(TAB_ENTRIES,country=mkt,quarter=quarter); cd=[]; asgn=set()
+            me=(pgdb.get_filtered(TAB_ENTRIES,country=mkt,quarter=quarter) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=mkt,quarter=quarter)); cd=[]; asgn=set()
             for ch in sorted(mc,key=lambda c:int(c.get("sort_order") or 0)):
                 cid=str(ch["id"]); ce=[e for e in me if str(e.get("channel_id",""))==cid]
                 ca=[a for a in aact if str(a.get("channel_id",""))==cid and str(a.get("country",""))==mkt and str(a.get("quarter",""))==quarter]
@@ -342,7 +438,10 @@ def api_reconciliation(quarter):
 def api_analytics():
     try:
         qf=request.args.get("quarter",""); cf=request.args.get("country","")
-        ae=get_records_cached(TAB_ENTRIES); ab=get_records_cached(TAB_BUDGETS); ac=get_records_cached(TAB_CHANNELS)
+        if USE_POSTGRES:
+            ae=pgdb.get_all(TAB_ENTRIES); ab=pgdb.get_all(TAB_BUDGETS); ac=pgdb.get_all(TAB_CHANNELS)
+        else:
+            ae=get_records_cached(TAB_ENTRIES); ab=get_records_cached(TAB_BUDGETS); ac=get_records_cached(TAB_CHANNELS)
         if qf: ae=[e for e in ae if str(e.get("quarter",""))==qf]; ab=[b for b in ab if str(b.get("quarter",""))==qf]; ac=[c for c in ac if str(c.get("quarter",""))==qf]
         if cf: ae=[e for e in ae if str(e.get("country",""))==cf]; ab=[b for b in ab if str(b.get("country",""))==cf]; ac=[c for c in ac if str(c.get("country",""))==cf]
         tb=sum(float(b.get("total_budget") or 0) for b in ab); tp=sum(float(e.get("planned") or 0) for e in ae); tc=sum(float(e.get("confirmed") or 0) for e in ae); ta=sum(float(e.get("actual") or 0) for e in ae)
@@ -390,7 +489,8 @@ def api_analytics():
 @app.route("/api/export")
 @require_login
 def api_export():
-    u=session["user"]; rows=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES)
+    u=session["user"]
+    rows = pgdb.get_all(TAB_ENTRIES) if USE_POSTGRES else safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES)
     if u!=ADMIN_MARKET: rows=[r for r in rows if r["country"]==u]
     out=io.StringIO(); w=csv.writer(out)
     w.writerow(["Country","Quarter","Month","Channel","Activity","BU","Finance Category","Marketing Category","Description","Planned","Confirmed","Actual","JIRA","Vendor","Notes","Approved","Entered By","Updated At"])
@@ -401,7 +501,11 @@ def api_export():
 @require_login
 def api_export_xlsx():
     from export_xlsx import build_finance_export; import tempfile
-    u=session["user"]; ae=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES); ac=safe_get_records(get_sheet(TAB_CHANNELS),TAB_CHANNELS); ab=safe_get_records(get_sheet(TAB_BUDGETS),TAB_BUDGETS)
+    u=session["user"]
+    if USE_POSTGRES:
+        ae=pgdb.get_all(TAB_ENTRIES); ac=pgdb.get_all(TAB_CHANNELS); ab=pgdb.get_all(TAB_BUDGETS)
+    else:
+        ae=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES); ac=safe_get_records(get_sheet(TAB_CHANNELS),TAB_CHANNELS); ab=safe_get_records(get_sheet(TAB_BUDGETS),TAB_BUDGETS)
     if u!=ADMIN_MARKET: ae=[e for e in ae if str(e.get("country",""))==u]; ac=[c for c in ac if str(c.get("country",""))==u]; ab=[b for b in ab if str(b.get("country",""))==u]
     tmp=tempfile.NamedTemporaryFile(suffix=".xlsx",delete=False); tmp.close()
     try: build_finance_export(tmp.name,ae,ac,ab)
@@ -416,7 +520,7 @@ def api_export_xlsx():
 @app.route("/api/invoice/<entry_id>/<int:inv_idx>")
 @require_login
 def api_invoice(entry_id, inv_idx):
-    rows=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES); r=next((row for row in rows if row["id"]==entry_id),None)
+    r = pgdb.get_entry_by_id(entry_id) if USE_POSTGRES else next((row for row in safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES) if row["id"]==entry_id),None)
     if not r: return "Not found",404
     names=json.loads(r.get("invoice_names") or "[]"); datas=json.loads(r.get("invoice_data") or "[]")
     if inv_idx>=len(datas): return "Not found",404
@@ -446,17 +550,27 @@ def api_import_channels():
             st=1 if lines and any(k in lines[0].lower() for k in ['country','quarter','channel']) else 0
             import csv as _c; parsed=list(_c.reader(lines[st:]))
     except Exception as e: return jsonify({"error":str(e)}),400
-    wc=get_sheet(TAB_CHANNELS); wb2=get_sheet(TAB_BUDGETS); ec=safe_get_records(wc,TAB_CHANNELS); eb=safe_get_records(wb2,TAB_BUDGETS); now=datetime.utcnow().isoformat(); saved=skipped=0; sr=[]
+    if USE_POSTGRES:
+        ec=pgdb.get_all(TAB_CHANNELS); eb=pgdb.get_all(TAB_BUDGETS)
+    else:
+        wc=get_sheet(TAB_CHANNELS); wb2=get_sheet(TAB_BUDGETS); ec=safe_get_records(wc,TAB_CHANNELS); eb=safe_get_records(wb2,TAB_BUDGETS)
+    now=datetime.utcnow().isoformat(); saved=skipped=0; sr=[]
     for row in parsed:
         if len(row)<3: skipped+=1; continue
         co,q,nm=row[0].strip(),row[1].strip().upper(),row[2].strip(); bv=float(str(row[3]).replace(',','').replace('$','').strip() or 0) if len(row)>=4 else 0
         if not co or not q or not nm: skipped+=1; continue
         if not q.startswith('Q'): q='Q'+q
-        if not any(r['country']==co and r['quarter']==q for r in eb): wb2.append_row([str(uuid.uuid4())[:8],co,q,0,now]); eb.append({'country':co,'quarter':q,'total_budget':0})
+        if not any(r['country']==co and r['quarter']==q for r in eb):
+            bid=str(uuid.uuid4())[:8]
+            if USE_POSTGRES: pgdb.upsert_budget(bid,co,q,0,now)
+            else: wb2.append_row([bid,co,q,0,now])
+            eb.append({'country':co,'quarter':q,'total_budget':0})
         if any(r['country']==co and r['quarter']==q and str(r['name']).strip()==nm for r in ec): skipped+=1; continue
         cid="ch_"+str(uuid.uuid4())[:8]; so=len([r for r in ec if r['country']==co and r['quarter']==q])
-        wc.append_row([cid,co,q,nm,bv,so,now]); ec.append({'id':cid,'country':co,'quarter':q,'name':nm,'budget':bv}); saved+=1; sr.append({"country":co,"quarter":q,"name":nm,"budget":bv})
-    invalidate_cache(TAB_CHANNELS); invalidate_cache(TAB_BUDGETS)
+        if USE_POSTGRES: pgdb.insert_channel(cid,co,q,nm,bv,so,now)
+        else: wc.append_row([cid,co,q,nm,bv,so,now])
+        ec.append({'id':cid,'country':co,'quarter':q,'name':nm,'budget':bv}); saved+=1; sr.append({"country":co,"quarter":q,"name":nm,"budget":bv})
+    if not USE_POSTGRES: invalidate_cache(TAB_CHANNELS); invalidate_cache(TAB_BUDGETS)
     return jsonify({"ok":True,"saved":saved,"skipped":skipped,"rows":sr})
 
 @app.route("/api/import/budgets", methods=["POST"])
@@ -475,18 +589,26 @@ def api_import_budgets():
             st=1 if lines and any(k in lines[0].lower() for k in ['country','quarter','budget']) else 0
             import csv as _c; parsed=list(_c.reader(lines[st:]))
     except Exception as e: return jsonify({"error":str(e)}),400
-    ws=get_sheet(TAB_BUDGETS); ex=safe_get_records(ws,TAB_BUDGETS); now=datetime.utcnow().isoformat(); saved=skipped=0; sr=[]
+    if USE_POSTGRES:
+        ex=pgdb.get_all(TAB_BUDGETS)
+    else:
+        ws=get_sheet(TAB_BUDGETS); ex=safe_get_records(ws,TAB_BUDGETS)
+    now=datetime.utcnow().isoformat(); saved=skipped=0; sr=[]
     for row in parsed:
         if len(row)<3: skipped+=1; continue
         co=row[0].strip(); q=row[1].strip().upper()
         if not q.startswith('Q'): q='Q'+q
         try: tot=float(str(row[2]).replace(',','').replace('$','').strip() or 0)
         except: skipped+=1; continue
-        idx=next((i for i,r in enumerate(ex) if r['country']==co and r['quarter']==q),None)
-        if idx is not None: ws.update(f"A{idx+2}:E{idx+2}",[[ex[idx]['id'],co,q,tot,now]])
-        else: ws.append_row([str(uuid.uuid4())[:8],co,q,tot,now]); ex.append({'country':co,'quarter':q,'total_budget':tot})
+        if USE_POSTGRES:
+            bid=str(uuid.uuid4())[:8]; pgdb.upsert_budget(bid,co,q,tot,now)
+        else:
+            idx=next((i for i,r in enumerate(ex) if r['country']==co and r['quarter']==q),None)
+            if idx is not None: ws.update(f"A{idx+2}:E{idx+2}",[[ex[idx]['id'],co,q,tot,now]])
+            else: ws.append_row([str(uuid.uuid4())[:8],co,q,tot,now]); ex.append({'country':co,'quarter':q,'total_budget':tot})
         saved+=1; sr.append({"country":co,"quarter":q,"total":tot})
-    invalidate_cache(TAB_BUDGETS); return jsonify({"ok":True,"saved":saved,"skipped":skipped,"rows":sr})
+    if not USE_POSTGRES: invalidate_cache(TAB_BUDGETS)
+    return jsonify({"ok":True,"saved":saved,"skipped":skipped,"rows":sr})
 
 if __name__ == "__main__":
     try: ensure_entry_headers()
