@@ -22,6 +22,8 @@ services:
     environment:
       DATABASE_URL: postgresql://budget_admin:localdev123@db:5432/budget_flask
       USE_POSTGRES: "true"
+      SECRET_KEY: "${SECRET_KEY:-localdev-secret-not-for-prod}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-localdev123}"
       SHEET_ID: "13TMeZ3pqdUQr2WRMG5G70xchZKfmiPVOShZChqbUsv4"
       BQ_PROJECT_ID: "gen-lang-client-0602500310"
       BQ_DATASET: "pepperstone_apac"
