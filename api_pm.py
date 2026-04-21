@@ -104,8 +104,11 @@ def _bq_fetch_pm_data(q_filter=None):
 
 @bp.route("/api/pm/preview")
 @require_login
-@require_admin
 def preview():
+    # Admin or editor can preview PM data (read-only)
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
     try:
         q_filter = request.args.get("quarter", "")
         agg_rows, total_raw_rows = _bq_fetch_pm_data(q_filter or None)
@@ -419,10 +422,12 @@ def auto_sync():
 
 @bp.route("/api/pm/readiness")
 @require_login
-@require_admin
 def readiness():
     """Check which markets have the required umbrella channels set up.
-    Useful to call before running a sync."""
+    Useful to call before running a sync. Admin or editor may check."""
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
     try:
         if USE_POSTGRES:
             channels = pgdb.get_all(TAB_CHANNELS)

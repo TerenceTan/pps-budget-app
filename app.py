@@ -120,8 +120,10 @@ def api_add_category():
 
 @app.route("/api/categories/<cat_id>", methods=["DELETE"])
 @require_login
-@require_admin
 def api_delete_category(cat_id):
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
     if USE_POSTGRES:
         pgdb.delete_category(cat_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_CATEGORIES); rows=safe_get_records(ws,TAB_CATEGORIES)
@@ -174,10 +176,18 @@ def api_save_budget(country, quarter):
     return jsonify({"ok":True})
 
 # -- CHANNELS -------------------------------------------------------------
+def _require_admin_or_editor():
+    """Return an error response if the user is neither admin nor editor; else None."""
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
+    return None
+
 @app.route("/api/channels", methods=["POST"])
 @require_login
-@require_admin
 def api_add_channel():
+    err = _require_admin_or_editor()
+    if err: return err
     d=request.get_json(); cid="ch_"+str(uuid.uuid4())[:8]
     if USE_POSTGRES:
         ex=pgdb.get_filtered(TAB_CHANNELS,country=d["country"],quarter=d["quarter"])
@@ -202,8 +212,9 @@ def api_add_channel():
 
 @app.route("/api/channels/<ch_id>", methods=["PUT"])
 @require_login
-@require_admin
 def api_update_channel(ch_id):
+    err = _require_admin_or_editor()
+    if err: return err
     d=request.get_json()
     if USE_POSTGRES:
         rows=pgdb.get_filtered(TAB_CHANNELS); r=next((r for r in rows if str(r["id"])==ch_id),None)
@@ -219,8 +230,9 @@ def api_update_channel(ch_id):
 
 @app.route("/api/channels/<ch_id>", methods=["DELETE"])
 @require_login
-@require_admin
 def api_delete_channel(ch_id):
+    err = _require_admin_or_editor()
+    if err: return err
     if USE_POSTGRES:
         pgdb.delete_channel(ch_id); return jsonify({"ok":True})
     ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
