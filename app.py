@@ -100,8 +100,11 @@ def api_add_category():
 
 @app.route("/api/categories/<cat_id>", methods=["DELETE"])
 @require_login
-@require_admin
 def api_delete_category(cat_id):
+    # Admin OR editor can delete categories (mirrors POST permissions)
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
     ws=get_sheet(TAB_CATEGORIES); rows=safe_get_records(ws,TAB_CATEGORIES)
     idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==cat_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -136,10 +139,18 @@ def api_save_budget(country, quarter):
     invalidate_cache(TAB_BUDGETS); return jsonify({"ok":True})
 
 # -- CHANNELS -------------------------------------------------------------
+def _require_admin_or_editor():
+    """Return an error response if the user is neither admin nor editor; else None."""
+    role = session.get("role", "")
+    if role not in ("admin", "editor"):
+        return jsonify({"error":"Admin or editor required"}), 403
+    return None
+
 @app.route("/api/channels", methods=["POST"])
 @require_login
-@require_admin
 def api_add_channel():
+    err = _require_admin_or_editor()
+    if err: return err
     d=request.get_json(); ex=rows_for(TAB_CHANNELS,country=d["country"],quarter=d["quarter"]); cid="ch_"+str(uuid.uuid4())[:8]
     # Guard against exact-name duplicates (case-insensitive) — returns existing id instead
     existing = next((c for c in ex if str(c.get("name","")).strip().lower() == str(d["name"]).strip().lower()), None)
@@ -153,8 +164,9 @@ def api_add_channel():
 
 @app.route("/api/channels/<ch_id>", methods=["PUT"])
 @require_login
-@require_admin
 def api_update_channel(ch_id):
+    err = _require_admin_or_editor()
+    if err: return err
     d=request.get_json(); ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
     idx=next((i for i,r in enumerate(rows) if r["id"]==ch_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
@@ -163,8 +175,9 @@ def api_update_channel(ch_id):
 
 @app.route("/api/channels/<ch_id>", methods=["DELETE"])
 @require_login
-@require_admin
 def api_delete_channel(ch_id):
+    err = _require_admin_or_editor()
+    if err: return err
     ws=get_sheet(TAB_CHANNELS); rows=safe_get_records(ws,TAB_CHANNELS)
     idx=next((i for i,r in enumerate(rows) if r["id"]==ch_id),None)
     if idx is None: return jsonify({"error":"Not found"}),404
