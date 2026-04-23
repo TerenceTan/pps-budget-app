@@ -362,7 +362,7 @@ def api_delete_entry(entry_id):
     ws=get_sheet(TAB_ENTRIES); rows=safe_get_records(ws,TAB_ENTRIES)
     idx=next((i for i,r in enumerate(rows) if str(r.get("id",""))==str(entry_id)),None)
     if idx is None: return jsonify({"error":"Not found"}),404
-    if session["user"]!=ADMIN_MARKET and str(rows[idx].get("country",""))!=session["user"]: return jsonify({"error":"Forbidden"}),403
+    if not check_country_access(str(rows[idx].get("country",""))): return jsonify({"error":"Forbidden"}),403
     ws.delete_rows(idx+2); invalidate_cache(TAB_ENTRIES); return jsonify({"ok":True})
 
 # -- VENDORS --------------------------------------------------------------
@@ -528,16 +528,51 @@ def api_analytics():
         var=[{"id":e["id"],"country":e["country"],"channel":e.get("channel_name",""),"description":e.get("description","") or e.get("activity_name",""),"planned":float(e.get("planned") or 0),"actual":float(e.get("actual") or 0),"variance":float(e.get("actual") or 0)-float(e.get("planned") or 0),"variance_pct":((float(e.get("actual") or 0)-float(e.get("planned") or 0))/float(e["planned"])*100) if float(e.get("planned") or 0)>0 else 0} for e in ae if float(e.get("planned") or 0)>0 or float(e.get("actual") or 0)>0]
         var.sort(key=lambda x:abs(x["variance"]),reverse=True)
         wa=sum(1 for e in ae if float(e.get("actual") or 0)>0); wj=sum(1 for e in ae if e.get("jira")); ap=sum(1 for e in ae if str(e.get("approved","")).lower()=="true")
-        MC=["HKG","CN","TW","TH","VN","SG","MY","MN","IN","APAC","ID","PH"]
-        chm={}
-        for e in ae: cid=str(e.get("channel_id","")); mc=str(e.get("marketing_cat","")); chm[cid]=mc if cid and mc else chm.get(cid,"")
-        bbcm=defaultdict(lambda:defaultdict(float)); pbcm=defaultdict(lambda:defaultdict(float)); abcm=defaultdict(lambda:defaultdict(float)); amcs=set()
+        MC=["HK","CN","TW","TH","VN","SG","MY","MN","IN","APAC","ID","PH"]
+        # Build channel_id -> list of (marketing_cat, weight) pairs based on entries.
+        # This splits a channel's budget proportionally across the mcs its entries fall into.
+        # Weight source priority per channel: actual > planned > entry_count.
+        # Falls back to single inferred mc if no entries exist for the channel.
+        channel_mc_weights = defaultdict(lambda: defaultdict(float))
+        channel_entry_mcs = defaultdict(set)
+        for e in ae:
+            cid=str(e.get("channel_id",""))
+            mc=str(e.get("marketing_cat","")) or ""
+            if not cid or not mc: continue
+            actual_v = float(e.get("actual") or 0)
+            planned_v = float(e.get("planned") or 0)
+            weight = actual_v if actual_v>0 else (planned_v if planned_v>0 else 1.0)
+            channel_mc_weights[cid][mc] += weight
+            channel_entry_mcs[cid].add(mc)
+
+        bbcm=defaultdict(lambda:defaultdict(float))
+        pbcm=defaultdict(lambda:defaultdict(float))
+        abcm=defaultdict(lambda:defaultdict(float))
+        amcs=set()
+
+        # Distribute each channel's budget across its marketing categories proportionally
         for c in ac:
-            cid=str(c.get("id","")); co=str(c.get("country","")); mc=chm.get(cid,"")
-            if mc and co: bbcm[mc][co]+=float(c.get("budget") or 0)
+            cid=str(c.get("id",""))
+            co=str(c.get("country",""))
+            channel_budget = float(c.get("budget") or 0)
+            if not co or channel_budget <= 0: continue
+            weights = channel_mc_weights.get(cid, {})
+            if weights:
+                total_w = sum(weights.values())
+                if total_w > 0:
+                    for mc, w in weights.items():
+                        bbcm[mc][co] += channel_budget * (w / total_w)
+                        amcs.add(mc)
+
         ctb=defaultdict(float)
         for b in ab: ctb[str(b.get("country",""))]+=float(b.get("total_budget") or 0)
-        for e in ae: mc=str(e.get("marketing_cat","")) or "Other"; co=str(e.get("country","")); pbcm[mc][co]+=float(e.get("planned") or 0); abcm[mc][co]+=float(e.get("actual") or 0); amcs.add(mc)
+        # Entries contribute to planned + actual by their own marketing_cat directly
+        for e in ae:
+            mc=str(e.get("marketing_cat","")) or "Other"
+            co=str(e.get("country",""))
+            pbcm[mc][co]+=float(e.get("planned") or 0)
+            abcm[mc][co]+=float(e.get("actual") or 0)
+            amcs.add(mc)
         for mc in bbcm: amcs.add(mc)
         mx=[]
         for mc in sorted(amcs):
@@ -548,7 +583,34 @@ def api_analytics():
         tr={"category":"Total"}; gb=gp=ga=0
         for co in MC: cb=ctb.get(co,0); cp=sum(pbcm[mc].get(co,0) for mc in amcs); ca=sum(abcm[mc].get(co,0) for mc in amcs); tr[co+"_bud"]=cb; tr[co+"_pln"]=cp; tr[co+"_act"]=ca; gb+=cb; gp+=cp; ga+=ca
         tr["total_bud"]=gb; tr["total_pln"]=gp; tr["total_act"]=ga; mx.append(tr)
-        return jsonify({"summary":{"total_budget":tb,"total_planned":tp,"total_confirmed":tc,"total_actual":ta,"total_entries":len(ae),"variance":ta-tp,"budget_utilization":(ta/tb*100) if tb>0 else 0},"by_country":[{"country":k,**v} for k,v in sorted(bc.items())],"by_channel":[{"channel":k,**v} for k,v in sorted(bch.items(),key=lambda x:-x[1]["actual"])],"by_month":[{"month":k,**v} for k,v in sorted(bm.items())],"by_marketing_cat":[{"category":k,**v} for k,v in sorted(bmc.items(),key=lambda x:-x[1]["actual"])],"top_variances":var[:20],"completion":{"total":len(ae),"with_actual":wa,"with_jira":wj,"approved":ap},"budget_matrix":mx,"matrix_countries":MC})
+
+        # ── Channel-level matrix (groups by channel_name instead of marketing_cat) ──
+        # Budget comes directly from the channel record; planned/actual from entries.
+        bbch=defaultdict(lambda:defaultdict(float))  # budget by channel_name by country
+        pbch=defaultdict(lambda:defaultdict(float))  # planned
+        abch=defaultdict(lambda:defaultdict(float))  # actual
+        achs=set()
+        for c in ac:
+            cn=str(c.get("name","")).strip() or "Other"
+            co=str(c.get("country",""))
+            if co: bbch[cn][co]+=float(c.get("budget") or 0); achs.add(cn)
+        for e in ae:
+            cn=str(e.get("channel_name","")).strip() or "Other"
+            co=str(e.get("country",""))
+            pbch[cn][co]+=float(e.get("planned") or 0)
+            abch[cn][co]+=float(e.get("actual") or 0)
+            achs.add(cn)
+        mxch=[]
+        for cn in sorted(achs):
+            row={"category":cn}; tb2=tp2=ta2=0
+            for co in MC: b=bbch[cn].get(co,0); p=pbch[cn].get(co,0); a=abch[cn].get(co,0); row[co+"_bud"]=b; row[co+"_pln"]=p; row[co+"_act"]=a; tb2+=b; tp2+=p; ta2+=a
+            row["total_bud"]=tb2; row["total_pln"]=tp2; row["total_act"]=ta2
+            if tb2>0 or tp2>0 or ta2>0: mxch.append(row)
+        trch={"category":"Total"}; gb2=gp2=ga2=0
+        for co in MC: cb=ctb.get(co,0); cp=sum(pbch[cn].get(co,0) for cn in achs); ca=sum(abch[cn].get(co,0) for cn in achs); trch[co+"_bud"]=cb; trch[co+"_pln"]=cp; trch[co+"_act"]=ca; gb2+=cb; gp2+=cp; ga2+=ca
+        trch["total_bud"]=gb2; trch["total_pln"]=gp2; trch["total_act"]=ga2; mxch.append(trch)
+
+        return jsonify({"summary":{"total_budget":tb,"total_planned":tp,"total_confirmed":tc,"total_actual":ta,"total_entries":len(ae),"variance":ta-tp,"budget_utilization":(ta/tb*100) if tb>0 else 0},"by_country":[{"country":k,**v} for k,v in sorted(bc.items())],"by_channel":[{"channel":k,**v} for k,v in sorted(bch.items(),key=lambda x:-x[1]["actual"])],"by_month":[{"month":k,**v} for k,v in sorted(bm.items())],"by_marketing_cat":[{"category":k,**v} for k,v in sorted(bmc.items(),key=lambda x:-x[1]["actual"])],"top_variances":var[:20],"completion":{"total":len(ae),"with_actual":wa,"with_jira":wj,"approved":ap},"budget_matrix":mx,"budget_matrix_ch":mxch,"matrix_countries":MC})
     except Exception as e:
         import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
 

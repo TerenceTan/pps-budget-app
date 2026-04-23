@@ -206,7 +206,7 @@ def main():
         if budget > 0:
             budget_warnings.append({
                 "country": c.get("country",""), "quarter": c.get("quarter",""),
-                "old_name": old_name, "budget": budget
+                "old_name": old_name, "new_name": new_name, "budget": budget
             })
 
     entry_updates = []
@@ -283,10 +283,10 @@ def main():
             print(f"    ... and {len(log)-30} more")
 
     if budget_warnings:
-        print(f"\n  [!] LDD/PM budget values NOT migrated automatically:")
+        print(f"\n  [!] Budget values will be transferred to the umbrella channel:")
         for bw in budget_warnings:
-            print(f"      {bw['country']}/{bw['quarter']} '{bw['old_name']}': ${bw['budget']:,.0f}")
-        print(f"      -> Add these to the umbrella channel budget manually via Config if needed.")
+            print(f"      {bw['country']}/{bw['quarter']} '{bw['old_name']}': ${bw['budget']:,.0f} -> '{bw['new_name']}'")
+        print(f"      -> These will be added to the umbrella channel budget automatically on --commit.")
 
     if dry_run:
         print("\n" + "="*70)
@@ -368,7 +368,30 @@ def main():
                         print(f"    ! {item['range']}: {ex2}")
         print(f"  done. {total_done}/{len(entry_updates)} entries updated in {time.time()-start:.1f}s")
 
-    # 2. Delete orphaned activities
+    # 2. Transfer budgets from old channels to umbrella channels
+    if budget_warnings:
+        print(f"\nTransferring budgets to umbrella channels...")
+        fresh_channels = safe_get_records(ws_channels, TAB_CHANNELS)
+        # Aggregate transfers: umbrella (name, country, quarter) -> total to add
+        transfers = {}
+        for bw in budget_warnings:
+            key = (bw["new_name"], bw["country"], bw["quarter"])
+            transfers[key] = transfers.get(key, 0) + bw["budget"]
+        for (new_name, country, quarter), add_budget in transfers.items():
+            for i, c in enumerate(fresh_channels):
+                if (str(c.get("name","")).strip() == new_name
+                        and str(c.get("country","")) == country
+                        and str(c.get("quarter","")) == quarter):
+                    current = float(c.get("budget") or 0)
+                    updated = current + add_budget
+                    try:
+                        safe_call(ws_channels.update, f"E{i+2}", [[updated]])
+                        print(f"  {country}/{quarter} '{new_name}': ${current:,.0f} + ${add_budget:,.0f} = ${updated:,.0f}")
+                    except Exception as ex:
+                        print(f"  ERROR updating budget for {country}/{quarter} '{new_name}': {ex}")
+                    break
+
+    # 4. Delete orphaned activities
     if activities_to_delete:
         print(f"\nDeleting {len(activities_to_delete)} orphaned activities...")
         if USE_POSTGRES:
@@ -391,7 +414,7 @@ def main():
                     print(f"  ! row {r}: {ex}")
             print(f"  deleted {len(to_del_rows)} rows.")
 
-    # 3. Delete orphan channels
+    # 5. Delete orphan channels
     if channels_to_delete:
         print(f"\nDeleting {len(channels_to_delete)} orphan channels...")
         if USE_POSTGRES:
