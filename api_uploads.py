@@ -16,6 +16,9 @@ from sheets_helper import (get_sheet, safe_get_records, get_records_cached,
                            rows_for_cached, invalidate_cache)
 from auth import require_login, require_admin
 
+if USE_POSTGRES:
+    import db as pgdb
+
 bp = Blueprint('uploads', __name__)
 
 # ═══════════════════════════════════════════════════════════════════
@@ -197,15 +200,22 @@ def upload_planned():
                        "channels_created":0, "activities_created":0,
                        "rejected":rejected[:100], "rejected_count":len(rejected)})
 
-    # Load state
-    ws_entries = get_sheet(TAB_ENTRIES)
-    ws_channels = get_sheet(TAB_CHANNELS)
-    ws_activities = get_sheet(TAB_ACTIVITIES)
-    ws_budgets = get_sheet(TAB_BUDGETS)
-    existing_entries = safe_get_records(ws_entries, TAB_ENTRIES)
-    existing_channels = safe_get_records(ws_channels, TAB_CHANNELS)
-    existing_activities = safe_get_records(ws_activities, TAB_ACTIVITIES)
-    existing_budgets = safe_get_records(ws_budgets, TAB_BUDGETS)
+    # Load state (branch by backend)
+    if USE_POSTGRES:
+        ws_entries = ws_channels = ws_activities = ws_budgets = None
+        existing_entries = pgdb.get_all(TAB_ENTRIES)
+        existing_channels = pgdb.get_all(TAB_CHANNELS)
+        existing_activities = pgdb.get_all(TAB_ACTIVITIES)
+        existing_budgets = pgdb.get_all(TAB_BUDGETS)
+    else:
+        ws_entries = get_sheet(TAB_ENTRIES)
+        ws_channels = get_sheet(TAB_CHANNELS)
+        ws_activities = get_sheet(TAB_ACTIVITIES)
+        ws_budgets = get_sheet(TAB_BUDGETS)
+        existing_entries = safe_get_records(ws_entries, TAB_ENTRIES)
+        existing_channels = safe_get_records(ws_channels, TAB_CHANNELS)
+        existing_activities = safe_get_records(ws_activities, TAB_ACTIVITIES)
+        existing_budgets = safe_get_records(ws_budgets, TAB_BUDGETS)
     now = datetime.utcnow().isoformat()
     username = session.get("username", "planned_upload")
 
@@ -218,7 +228,11 @@ def upload_planned():
     def ensure_budget(country, quarter):
         if any(str(b.get("country",""))==country and str(b.get("quarter",""))==quarter for b in existing_budgets):
             return
-        ws_budgets.append_row([str(uuid.uuid4())[:8], country, quarter, 0, now])
+        bid = str(uuid.uuid4())[:8]
+        if USE_POSTGRES:
+            pgdb.upsert_budget(bid, country, quarter, 0, now)
+        else:
+            ws_budgets.append_row([bid, country, quarter, 0, now])
         existing_budgets.append({"country":country, "quarter":quarter, "total_budget":0})
 
     def ensure_channel(country, quarter, channel_name):
@@ -230,7 +244,10 @@ def upload_planned():
                 return str(c["id"])
         cid = "ch_" + str(uuid.uuid4())[:8]
         so = len([c for c in existing_channels if str(c.get("country",""))==country and str(c.get("quarter",""))==quarter])
-        ws_channels.append_row([cid, country, quarter, channel_name, 0, so, now])
+        if USE_POSTGRES:
+            pgdb.insert_channel(cid, country, quarter, channel_name, 0, so, now)
+        else:
+            ws_channels.append_row([cid, country, quarter, channel_name, 0, so, now])
         existing_channels.append({"id":cid, "country":country, "quarter":quarter,
                                   "name":channel_name, "budget":0, "sort_order":so})
         channels_created += 1
@@ -247,7 +264,10 @@ def upload_planned():
                 return str(a["id"])
         aid = "act_" + str(uuid.uuid4())[:8]
         so = len([a for a in existing_activities if str(a.get("channel_id",""))==channel_id])
-        ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
+        if USE_POSTGRES:
+            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now)
+        else:
+            ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
         existing_activities.append({"id":aid, "channel_id":channel_id, "country":country,
                                     "quarter":quarter, "name":activity_name, "sort_order":so})
         activities_created += 1
@@ -274,9 +294,8 @@ def upload_planned():
         if matches:
             # Overwrite planned on the first match (should only be one, pm_ entries are unique per key)
             idx, e = matches[0]
-            sheet_row = idx + 2
-            ws_entries.update(f"A{sheet_row}:X{sheet_row}", [[
-                str(e.get("id","")), str(e.get("country","")), str(e.get("quarter","")), str(e.get("month","")),
+            row_vals = [
+                str(e.get("country","")), str(e.get("quarter","")), str(e.get("month","")),
                 channel_id, mapped_channel, activity_id, mapped_activity,
                 str(e.get("bu","")) or mapping["bu"],
                 str(e.get("finance_cat","")) or mapping["finance_cat"],
@@ -289,13 +308,18 @@ def upload_planned():
                 str(e.get("approved","False")),
                 str(e.get("invoice_names","[]")), str(e.get("invoice_data","[]")),
                 str(e.get("entered_by","")), str(e.get("created_at","")), now
-            ]])
+            ]
+            if USE_POSTGRES:
+                pgdb.update_entry_full(str(e.get("id","")), row_vals)
+            else:
+                sheet_row = idx + 2
+                ws_entries.update(f"A{sheet_row}:X{sheet_row}", [[str(e.get("id",""))] + row_vals])
             overwrote += 1
             saved += 1
         else:
             # Create planned-only entry (PM sync will later fill actual if/when data arrives)
             entry_id = "pln_" + str(uuid.uuid4())[:10]
-            ws_entries.append_row([
+            row_data = [
                 entry_id, r["country"], r["quarter"], r["month"],
                 channel_id, mapped_channel, activity_id, mapped_activity,
                 mapping["bu"], mapping["finance_cat"], mapping["marketing_cat"],
@@ -304,7 +328,11 @@ def upload_planned():
                 "", mapped_activity, f"Planned uploaded {now[:10]}",
                 "False", "[]", "[]",
                 username, now, now
-            ])
+            ]
+            if USE_POSTGRES:
+                pgdb.insert_entry(row_data)
+            else:
+                ws_entries.append_row(row_data)
             existing_entries.append({"id":entry_id, "country":r["country"],
                                      "channel_id":channel_id, "activity_id":activity_id,
                                      "month":r["month"], "planned":planned})
@@ -312,10 +340,11 @@ def upload_planned():
             created += 1
             saved += 1
 
-    invalidate_cache(TAB_ENTRIES)
-    invalidate_cache(TAB_CHANNELS)
-    invalidate_cache(TAB_ACTIVITIES)
-    invalidate_cache(TAB_BUDGETS)
+    if not USE_POSTGRES:
+        invalidate_cache(TAB_ENTRIES)
+        invalidate_cache(TAB_CHANNELS)
+        invalidate_cache(TAB_ACTIVITIES)
+        invalidate_cache(TAB_BUDGETS)
     return jsonify({
         "ok":True, "saved":saved, "overwrote":overwrote, "created":created,
         "channels_created":channels_created, "activities_created":activities_created,
@@ -447,12 +476,18 @@ def upload_entries():
                        "approved_overwrites":[],
                        "rejected":rejected[:100], "rejected_count":len(rejected)})
 
-    ws_entries = get_sheet(TAB_ENTRIES)
-    ws_channels = get_sheet(TAB_CHANNELS)
-    ws_activities = get_sheet(TAB_ACTIVITIES)
-    existing_entries = safe_get_records(ws_entries, TAB_ENTRIES)
-    existing_channels = safe_get_records(ws_channels, TAB_CHANNELS)
-    existing_activities = safe_get_records(ws_activities, TAB_ACTIVITIES)
+    if USE_POSTGRES:
+        ws_entries = ws_channels = ws_activities = None
+        existing_entries = pgdb.get_all(TAB_ENTRIES)
+        existing_channels = pgdb.get_all(TAB_CHANNELS)
+        existing_activities = pgdb.get_all(TAB_ACTIVITIES)
+    else:
+        ws_entries = get_sheet(TAB_ENTRIES)
+        ws_channels = get_sheet(TAB_CHANNELS)
+        ws_activities = get_sheet(TAB_ACTIVITIES)
+        existing_entries = safe_get_records(ws_entries, TAB_ENTRIES)
+        existing_channels = safe_get_records(ws_channels, TAB_CHANNELS)
+        existing_activities = safe_get_records(ws_activities, TAB_ACTIVITIES)
     now = datetime.utcnow().isoformat()
     username = session.get("username", "line_upload")
 
@@ -478,7 +513,10 @@ def upload_entries():
                 return str(a["id"])
         aid = "act_" + str(uuid.uuid4())[:8]
         so = len([a for a in existing_activities if str(a.get("channel_id",""))==channel_id])
-        ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
+        if USE_POSTGRES:
+            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now)
+        else:
+            ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
         existing_activities.append({"id":aid,"channel_id":channel_id,"country":country,
                                     "quarter":quarter,"name":activity_name,"sort_order":so})
         activities_created += 1
@@ -514,7 +552,6 @@ def upload_entries():
 
         if match:
             idx, e = match
-            sheet_row = idx + 2
             was_approved = str(e.get("approved","")).strip().lower() == "true"
             if was_approved:
                 approved_overwrites.append({
@@ -524,8 +561,8 @@ def upload_entries():
                     "channel": ch_canonical, "activity": r["activity_name"],
                     "vendor": r["vendor"], "description": r["description"],
                 })
-            ws_entries.update(f"A{sheet_row}:X{sheet_row}", [[
-                str(e.get("id","")), r["country"], r["quarter"], r["month"],
+            row_vals = [
+                r["country"], r["quarter"], r["month"],
                 ch_id, ch_canonical, act_id, r["activity_name"],
                 r["bu"] or str(e.get("bu","")),
                 r["finance_cat"] or str(e.get("finance_cat","")),
@@ -540,12 +577,17 @@ def upload_entries():
                 str(r["approved"]) if r["approved"] else str(e.get("approved","False")),
                 str(e.get("invoice_names","[]")), str(e.get("invoice_data","[]")),
                 str(e.get("entered_by","")) or username, str(e.get("created_at","")) or now, now
-            ]])
+            ]
+            if USE_POSTGRES:
+                pgdb.update_entry_full(str(e.get("id","")), row_vals)
+            else:
+                sheet_row = idx + 2
+                ws_entries.update(f"A{sheet_row}:X{sheet_row}", [[str(e.get("id",""))] + row_vals])
             overwrote += 1
             saved += 1
         else:
             entry_id = "li_" + str(uuid.uuid4())[:10]
-            ws_entries.append_row([
+            row_data = [
                 entry_id, r["country"], r["quarter"], r["month"],
                 ch_id, ch_canonical, act_id, r["activity_name"],
                 r["bu"], r["finance_cat"], r["marketing_cat"],
@@ -555,7 +597,11 @@ def upload_entries():
                 str(r["approved"]),
                 "[]", "[]",
                 username, now, now
-            ])
+            ]
+            if USE_POSTGRES:
+                pgdb.insert_entry(row_data)
+            else:
+                ws_entries.append_row(row_data)
             existing_entries.append({"id":entry_id, "country":r["country"], "month":r["month"],
                                      "channel_id":ch_id, "activity_id":act_id,
                                      "vendor":r["vendor"], "description":r["description"]})
@@ -563,9 +609,10 @@ def upload_entries():
             created += 1
             saved += 1
 
-    invalidate_cache(TAB_ENTRIES)
-    invalidate_cache(TAB_CHANNELS)
-    invalidate_cache(TAB_ACTIVITIES)
+    if not USE_POSTGRES:
+        invalidate_cache(TAB_ENTRIES)
+        invalidate_cache(TAB_CHANNELS)
+        invalidate_cache(TAB_ACTIVITIES)
     return jsonify({
         "ok":True, "saved":saved, "overwrote":overwrote, "created":created,
         "channels_created":0,  # line-item upload does not create channels
@@ -588,7 +635,10 @@ def _filter_entries_for_bulk(d):
     month = d.get("month","").strip()
     if not country or not quarter:
         return None, "country and quarter are required"
-    rows = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
+    if USE_POSTGRES:
+        rows = pgdb.get_filtered(TAB_ENTRIES, country=country, quarter=quarter)
+    else:
+        rows = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
     out = []
     for idx, e in enumerate(rows):
         if str(e.get("country","")) != country: continue
@@ -652,28 +702,37 @@ def bulk_delete_commit():
     if confirmation != expected:
         return jsonify({"error":f"Confirmation mismatch. Type exactly: {expected}"}), 400
 
-    # Resolve IDs to sheet row indices
-    ws = get_sheet(TAB_ENTRIES)
-    rows = safe_get_records(ws, TAB_ENTRIES)
     id_set = set(ids_to_delete)
-    to_delete = []
-    for idx, e in enumerate(rows):
-        if str(e.get("id","")) in id_set:
-            to_delete.append((idx, str(e.get("id",""))))
-
-    if not to_delete:
-        return jsonify({"error":"None of the provided IDs were found in the sheet (maybe already deleted)."}), 400
-
-    # Delete bottom-up so indices stay valid
-    to_delete.sort(key=lambda t: t[0], reverse=True)
     deleted_ids = []
-    for idx, eid in to_delete:
-        try:
-            ws.delete_rows(idx + 2)
-            deleted_ids.append(eid)
-        except Exception as ex:
-            print(f"[bulk_delete] failed row {idx+2} (id={eid}): {ex}")
-    invalidate_cache(TAB_ENTRIES)
+
+    if USE_POSTGRES:
+        for eid in ids_to_delete:
+            try:
+                if pgdb.get_entry_by_id(eid) is not None:
+                    pgdb.delete_entry(eid)
+                    deleted_ids.append(eid)
+            except Exception as ex:
+                print(f"[bulk_delete] failed id={eid}: {ex}")
+        if not deleted_ids:
+            return jsonify({"error":"None of the provided IDs were found (maybe already deleted)."}), 400
+    else:
+        ws = get_sheet(TAB_ENTRIES)
+        rows = safe_get_records(ws, TAB_ENTRIES)
+        to_delete = []
+        for idx, e in enumerate(rows):
+            if str(e.get("id","")) in id_set:
+                to_delete.append((idx, str(e.get("id",""))))
+        if not to_delete:
+            return jsonify({"error":"None of the provided IDs were found in the sheet (maybe already deleted)."}), 400
+        # Delete bottom-up so indices stay valid
+        to_delete.sort(key=lambda t: t[0], reverse=True)
+        for idx, eid in to_delete:
+            try:
+                ws.delete_rows(idx + 2)
+                deleted_ids.append(eid)
+            except Exception as ex:
+                print(f"[bulk_delete] failed row {idx+2} (id={eid}): {ex}")
+        invalidate_cache(TAB_ENTRIES)
     return jsonify({
         "ok": True,
         "deleted": len(deleted_ids),
