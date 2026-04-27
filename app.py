@@ -429,6 +429,17 @@ def api_analytics():
             channel_mc_weights[cid][mc] += weight
             channel_entry_mcs[cid].add(mc)
 
+        # Keyword -> marketing_cat lookup, used as fallback for channels with no entries
+        try:
+            mr=get_records_cached(TAB_MAPPING)
+            kw_to_mc=[(str(r.get("channel_keyword","")).strip().lower(), str(r.get("marketing_cat","")).strip()) for r in mr if r.get("channel_keyword") and r.get("marketing_cat")]
+        except: kw_to_mc=[(kw.lower(), mc) for kw,_,_,mc in DEFAULT_MAPPING]
+        def fallback_mc(channel_name):
+            n=channel_name.lower()
+            for kw,mc in kw_to_mc:
+                if kw and kw in n: return mc
+            return channel_name or "Other"
+
         bbcm=defaultdict(lambda:defaultdict(float))
         pbcm=defaultdict(lambda:defaultdict(float))
         abcm=defaultdict(lambda:defaultdict(float))
@@ -447,6 +458,11 @@ def api_analytics():
                     for mc, w in weights.items():
                         bbcm[mc][co] += channel_budget * (w / total_w)
                         amcs.add(mc)
+            else:
+                # No entries yet — attribute full budget to keyword-mapped category (or channel name)
+                mc = fallback_mc(str(c.get("name","")).strip())
+                bbcm[mc][co] += channel_budget
+                amcs.add(mc)
 
         ctb=defaultdict(float)
         for b in ab: ctb[str(b.get("country",""))]+=float(b.get("total_budget") or 0)
