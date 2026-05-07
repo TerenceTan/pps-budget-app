@@ -838,7 +838,10 @@ function anRestoreMonthSelection(){
   document.querySelectorAll('#an_mo_dd_p input').forEach(function(cb){
     if(wantLabels.has(cb.value)){ cb.checked = true; }
   });
-  ddChange('an_mo_dd');
+  // Update badge only — do NOT call ddChange, which would re-fire anApplyMonth → renderAnalytics → infinite loop
+  const checks=[...document.querySelectorAll('#an_mo_dd_p input:checked')];
+  const badge=g('an_mo_dd_c');
+  if(badge){badge.textContent=checks.length;badge.style.display=checks.length>0?'':'none';}
 }
 
 // Analytics filter: update stats, charts, tables, matrix
