@@ -872,11 +872,15 @@ function anApplyFilters(){
   if(selCh.length>0) filteredChannel = filteredChannel.filter(c=>selCh.includes(c.channel));
   if(selMc.length>0) filteredMktCat = filteredMktCat.filter(c=>selMc.includes(c.category));
 
-  // Update summary stats
-  const fBud = filteredCountry.reduce((s,c)=>s+c.budget,0);
-  const fPln = filteredCountry.reduce((s,c)=>s+c.planned,0);
-  const fCon = filteredCountry.reduce((s,c)=>s+c.confirmed,0);
-  const fAct = filteredCountry.reduce((s,c)=>s+c.actual,0);
+  // Update summary stats. Pick the source that reflects the active filter:
+  // Channel filter is more specific than Country, so it wins when selected.
+  // (When Co + Ch are combined the API ships no 2D aggregate, so we accept
+  // the Channel-side numbers as the closest available answer.)
+  const statsSrc = (selCh.length>0) ? filteredChannel : filteredCountry;
+  const fBud = statsSrc.reduce((s,c)=>s+(c.budget||0),0);
+  const fPln = statsSrc.reduce((s,c)=>s+(c.planned||0),0);
+  const fCon = statsSrc.reduce((s,c)=>s+(c.confirmed||0),0);
+  const fAct = statsSrc.reduce((s,c)=>s+(c.actual||0),0);
   const fVar = fAct - fPln;
   const fUtil = fBud>0?(fAct/fBud*100):0;
 
@@ -909,6 +913,7 @@ function anApplyFilters(){
 
   // Store active filters for matrix and re-render it
   window._mxFilterCo = selCo;
+  window._mxFilterCh = selCh;
   window._mxFilterMc = selMc;
   mxRender();
 
@@ -944,13 +949,19 @@ function mxRender(){
 
   // Apply active filters from analytics dropdowns
   var fCo=window._mxFilterCo||[];
+  var fCh=window._mxFilterCh||[];
   var fMc=window._mxFilterMc||[];
 
   // Filter columns by country selection
   var cols=fCo.length>0?allCols.filter(function(c){return fCo.includes(c)}):allCols;
 
-  // Filter rows by marketing category
-  var filteredRows=fMc.length>0?rows.filter(function(r){return fMc.includes(r.category)}):rows;
+  // Filter rows: by category in MC mode, by channel in Channel mode
+  var filteredRows=rows;
+  if(grp==='ch' && fCh.length>0){
+    filteredRows=filteredRows.filter(function(r){return fCh.includes(r.category)});
+  } else if(fMc.length>0){
+    filteredRows=filteredRows.filter(function(r){return fMc.includes(r.category)});
+  }
 
   if(co==='ALL'){
     var h='<table style="width:100%;font-size:12px"><thead><tr style="background:var(--s2)">';
