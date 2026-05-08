@@ -355,17 +355,29 @@ def auto_sync():
             if existing:
                 e = existing["entry"]
                 old_spend = float(e.get("actual") or 0)
-                if abs(spend - old_spend) < 0.01:
+                # Skip only if BOTH the actual AND the classification fields
+                # already match what the canonical mapping says. Otherwise we
+                # need to rewrite the row to fix stale finance_cat / bu / etc.
+                classification_drift = (
+                    str(e.get("bu","")) != mapped_bu
+                    or str(e.get("finance_cat","")) != mapped_finance_cat
+                    or str(e.get("marketing_cat","")) != mapped_marketing_cat
+                )
+                if abs(spend - old_spend) < 0.01 and not classification_drift:
                     skipped += 1
                     continue
                 sheet_row = existing["idx"] + 2
                 try:
+                    # Full row rewrite. bu / finance_cat / marketing_cat ALWAYS take
+                    # the canonical value from PM_CHANNEL_MAP — previously these were
+                    # "keep existing if non-empty", which froze stale categorisation
+                    # (e.g. a Douyin row stuck at finance_cat='PPC' from first sync).
                     row_vals = [
                         str(e.get("country","")), str(e.get("quarter","")), str(e.get("month","")),
                         channel_id, mapped_channel, activity_id, mapped_activity,
-                        str(e.get("bu","")) or mapped_bu,
-                        str(e.get("finance_cat","")) or mapped_finance_cat,
-                        str(e.get("marketing_cat","")) or mapped_marketing_cat,
+                        mapped_bu,
+                        mapped_finance_cat,
+                        mapped_marketing_cat,
                         str(e.get("description","")) or f"{channel_group}: ${spend:,.0f} AUD",
                         0,                                     # planned — always zero for pm_ entries
                         float(e.get("confirmed") or 0),        # confirmed — untouched

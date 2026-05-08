@@ -500,6 +500,285 @@ def api_reconciliation(quarter):
     except Exception as e:
         import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
 
+# -- ADMIN: PM DATA DIAGNOSTIC + RECLASSIFICATION -------------------------
+# Read-only diagnostic and a write-mode reclassifier to detect and fix
+# stale/duplicate/mis-classified pm_ entries that cause amount inflation
+# during finance reconciliation. Same logic as diagnose_pm_duplicates.py
+# and reclassify_pm_entries.py, but runs against whatever backend the
+# deployed app talks to (Postgres in prod, Sheets locally).
+@app.route("/api/admin/pm_diagnose")
+@require_login
+@require_admin
+def api_admin_pm_diagnose():
+    """Diagnostic for PM data integrity. Optional filters:
+       ?country=CN    scope to one country
+       ?month=2026-04 scope to one month (e.g. April only)
+       ?activity=AdRoll  scope to one activity (case-insensitive contains)
+    Without filters, runs across everything."""
+    try:
+        from collections import Counter
+        f_co = request.args.get("country","").strip()
+        f_mo = request.args.get("month","").strip()
+        f_act = request.args.get("activity","").strip().lower()
+
+        if USE_POSTGRES:
+            all_entries = pgdb.get_all(TAB_ENTRIES)
+            channels = pgdb.get_all(TAB_CHANNELS)
+            activities = pgdb.get_all(TAB_ACTIVITIES)
+        else:
+            all_entries = safe_get_records(get_sheet(TAB_ENTRIES), TAB_ENTRIES)
+            channels = safe_get_records(get_sheet(TAB_CHANNELS), TAB_CHANNELS)
+            activities = safe_get_records(get_sheet(TAB_ACTIVITIES), TAB_ACTIVITIES)
+
+        def matches(e):
+            if f_co and str(e.get("country","")) != f_co: return False
+            if f_mo and str(e.get("month","")) != f_mo: return False
+            if f_act and f_act not in str(e.get("activity_name","")).lower(): return False
+            return True
+        entries = [e for e in all_entries if matches(e)]
+        pm_entries = [e for e in entries if str(e.get("id","")).startswith("pm_")]
+        channel_ids = {str(c.get("id","")) for c in channels}
+        activity_ids = {str(a.get("id","")) for a in activities}
+
+        # 1. Duplicate pm_ entries by (country, activity_name, month)
+        bucket = defaultdict(list)
+        for e in pm_entries:
+            k = (str(e.get("country","")), str(e.get("activity_name","")), str(e.get("month","")))
+            bucket[k].append(e)
+        dups = []
+        total_inflation = 0.0
+        for (co, act, mo), rows in bucket.items():
+            if len(rows) <= 1: continue
+            actuals = [float(r.get("actual") or 0) for r in rows]
+            inflation = sum(actuals) - max(actuals)
+            total_inflation += inflation
+            dups.append({"country":co, "activity_name":act, "month":mo,
+                         "count":len(rows), "actuals":actuals,
+                         "inflation":round(inflation,2),
+                         "ids":[str(r.get("id","")) for r in rows]})
+
+        # 2. Inconsistent finance_cat for same activity_name
+        by_act = defaultdict(Counter)
+        for e in pm_entries:
+            act = str(e.get("activity_name",""))
+            fc = str(e.get("finance_cat",""))
+            if act and fc: by_act[act][fc] += 1
+        inconsistent = []
+        for act, cnt in by_act.items():
+            if len(cnt) > 1:
+                inconsistent.append({"activity_name":act, "finance_cats":dict(cnt),
+                                     "canonical": PM_CHANNEL_MAP.get(act, {}).get("finance_cat", "<not in map>")})
+
+        # 3. Stale mapping (entry's classification != canonical)
+        stale = []
+        for e in pm_entries:
+            act = str(e.get("activity_name",""))
+            if act not in PM_CHANNEL_MAP: continue
+            canon = PM_CHANNEL_MAP[act]
+            for field in ("bu","finance_cat","marketing_cat"):
+                if str(e.get(field,"")) and str(e.get(field,"")) != canon[field]:
+                    stale.append({"id":str(e.get("id","")), "country":str(e.get("country","")),
+                                  "month":str(e.get("month","")), "activity_name":act,
+                                  "field":field,
+                                  "current":str(e.get(field,"")), "canonical":canon[field]})
+                    break
+
+        # 4. Orphans (channel_id / activity_id not in current sheets)
+        orphans_ch = sum(1 for e in pm_entries if str(e.get("channel_id","")) not in channel_ids)
+        orphans_act = sum(1 for e in pm_entries if str(e.get("activity_id","")) not in activity_ids)
+
+        # 5. Per-activity totals: pm_ vs manual
+        per_act = defaultdict(lambda: {"pm_actual":0.0, "pm_count":0,
+                                        "manual_planned":0.0, "manual_actual":0.0, "manual_count":0})
+        for e in entries:
+            key = f"{e.get('channel_name','')} / {e.get('activity_name','')}"
+            if str(e.get("id","")).startswith("pm_"):
+                per_act[key]["pm_actual"] += float(e.get("actual") or 0); per_act[key]["pm_count"] += 1
+            else:
+                per_act[key]["manual_planned"] += float(e.get("planned") or 0)
+                per_act[key]["manual_actual"] += float(e.get("actual") or 0)
+                per_act[key]["manual_count"] += 1
+        per_act_list = sorted(
+            [{"channel_activity":k, **{kk:round(vv,2) if isinstance(vv,float) else vv for kk,vv in v.items()}}
+             for k,v in per_act.items() if v["pm_count"]>0 or v["manual_count"]>0],
+            key=lambda x: -(x["pm_actual"] + x["manual_actual"]))
+
+        return jsonify({
+            "ok":True,
+            "totals": {"entries":len(entries), "pm_entries":len(pm_entries),
+                       "manual_or_other":len(entries)-len(pm_entries),
+                       "channels":len(channels), "activities":len(activity_ids)},
+            "duplicates": {"count":len(dups), "total_inflation":round(total_inflation,2), "rows":dups},
+            "inconsistent_finance_cats": {"count":len(inconsistent), "rows":inconsistent},
+            "stale_mappings": {"count":len(stale), "rows":stale[:100]},
+            "orphans": {"missing_channel_id":orphans_ch, "missing_activity_id":orphans_act},
+            "per_activity": per_act_list,
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
+
+
+@app.route("/api/admin/pm_dedupe", methods=["POST"])
+@require_login
+@require_admin
+def api_admin_pm_dedupe():
+    """Collapse duplicate pm_ entries: when (country, activity_name, month) has
+    >1 row, keep the most-recently-updated row with the largest actual, sum the
+    others' actuals into it, and delete the extras.
+    Pass ?commit=1 to actually write — without it this is dry-run.
+    Optional: ?country, ?month, ?activity to scope the operation.
+    """
+    try:
+        from collections import defaultdict
+        commit = request.args.get("commit","")=="1"
+        f_co = request.args.get("country","").strip()
+        f_mo = request.args.get("month","").strip()
+        f_act = request.args.get("activity","").strip().lower()
+
+        if USE_POSTGRES:
+            ws = None
+            all_entries = pgdb.get_all(TAB_ENTRIES)
+        else:
+            ws = get_sheet(TAB_ENTRIES)
+            all_entries = safe_get_records(ws, TAB_ENTRIES)
+
+        bucket = defaultdict(list)  # key -> [(idx, entry), ...]
+        for i, e in enumerate(all_entries):
+            if not str(e.get("id","")).startswith("pm_"): continue
+            co, act, mo = str(e.get("country","")), str(e.get("activity_name","")), str(e.get("month",""))
+            if f_co and co != f_co: continue
+            if f_mo and mo != f_mo: continue
+            if f_act and f_act not in act.lower(): continue
+            if not (co and act and mo): continue
+            bucket[(co, act, mo)].append((i, e))
+
+        plans = []  # what we'd do
+        for key, rows in bucket.items():
+            if len(rows) <= 1: continue
+            # Keeper: largest actual; tiebreak by most recent updated_at
+            rows_sorted = sorted(rows, key=lambda x: (
+                float(x[1].get("actual") or 0),
+                str(x[1].get("updated_at",""))
+            ), reverse=True)
+            keeper_idx, keeper = rows_sorted[0]
+            extras = rows_sorted[1:]
+            keeper_actual = float(keeper.get("actual") or 0)
+            extras_actual = sum(float(e.get("actual") or 0) for _, e in extras)
+            plans.append({
+                "country":key[0], "activity_name":key[1], "month":key[2],
+                "keeper":{"id":str(keeper.get("id","")), "row":keeper_idx+2,
+                          "actual":keeper_actual},
+                "delete":[{"id":str(e.get("id","")), "row":i+2,
+                           "actual":float(e.get("actual") or 0)} for i,e in extras],
+                "extras_actual_sum":round(extras_actual, 2),
+                "new_keeper_actual":round(keeper_actual + extras_actual, 2),
+            })
+
+        result = {"ok":True, "commit":commit,
+                  "duplicate_groups":len(plans),
+                  "rows_to_delete":sum(len(p["delete"]) for p in plans),
+                  "total_inflation_to_remove":round(sum(p["extras_actual_sum"] for p in plans),2),
+                  "plans":plans[:100]}
+        if not commit: return jsonify(result)
+
+        # COMMIT path: update keepers, then delete extras
+        now = datetime.utcnow().isoformat()
+        updated = 0; deleted = 0; failed = []
+        # First: update each keeper's actual to keeper + extras sum
+        for p in plans:
+            try:
+                if USE_POSTGRES:
+                    pgdb.update_entry_cell(p['keeper']['id'], "actual", p['new_keeper_actual'])
+                    pgdb.update_entry_cell(p['keeper']['id'], "updated_at", now)
+                else:
+                    ws.update(f"O{p['keeper']['row']}", [[p['new_keeper_actual']]])  # col O = actual (col 15)
+                    ws.update(f"X{p['keeper']['row']}", [[now]])
+                updated += 1
+            except Exception as ex:
+                failed.append({"step":"update_keeper", "id":p['keeper']['id'], "error":str(ex)})
+        # Second: delete extras. For PG, delete by id; for Sheets, bottom-up to keep row indices stable
+        if USE_POSTGRES:
+            for p in plans:
+                for d in p["delete"]:
+                    try:
+                        pgdb.delete_entry(d["id"])
+                        deleted += 1
+                    except Exception as ex:
+                        failed.append({"step":"delete_extra", "id":d["id"], "error":str(ex)})
+        else:
+            rows_to_delete_sorted = sorted(
+                [(p, d) for p in plans for d in p["delete"]],
+                key=lambda x: -x[1]["row"]
+            )
+            for p, d in rows_to_delete_sorted:
+                try:
+                    ws.delete_rows(d["row"])
+                    deleted += 1
+                except Exception as ex:
+                    failed.append({"step":"delete_extra", "row":d["row"], "error":str(ex)})
+            invalidate_cache(TAB_ENTRIES)
+        result["updated_keepers"] = updated
+        result["deleted_extras"] = deleted
+        result["failed"] = failed
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
+
+
+@app.route("/api/admin/pm_reclassify", methods=["POST"])
+@require_login
+@require_admin
+def api_admin_pm_reclassify():
+    """Re-classify every pm_ entry whose activity_name is in PM_CHANNEL_MAP
+    so its bu/finance_cat/marketing_cat match the canonical mapping.
+    Pass ?commit=1 to actually write — without it this is dry-run."""
+    try:
+        commit = request.args.get("commit","")=="1"
+        if USE_POSTGRES:
+            ws = None
+            entries = pgdb.get_all(TAB_ENTRIES)
+        else:
+            ws = get_sheet(TAB_ENTRIES)
+            entries = safe_get_records(ws, TAB_ENTRIES)
+        targets = []
+        for i, e in enumerate(entries):
+            if not str(e.get("id","")).startswith("pm_"): continue
+            act = str(e.get("activity_name",""))
+            if act not in PM_CHANNEL_MAP: continue
+            canon = PM_CHANNEL_MAP[act]
+            changes = {}
+            for field in ("bu","finance_cat","marketing_cat"):
+                cur = str(e.get(field,""))
+                if cur != canon[field]: changes[field] = {"from":cur, "to":canon[field]}
+            if changes: targets.append({"sheet_row":i+2, "id":str(e.get("id","")),
+                                         "country":str(e.get("country","")),
+                                         "month":str(e.get("month","")),
+                                         "activity_name":act, "changes":changes})
+        result = {"ok":True, "commit":commit, "to_update":len(targets), "rows":targets[:100]}
+        if not commit: return jsonify(result)
+        # COMMIT path
+        now = datetime.utcnow().isoformat(); updated = 0; failed = []
+        for t in targets:
+            canon = PM_CHANNEL_MAP[t["activity_name"]]
+            try:
+                if USE_POSTGRES:
+                    pgdb.update_entry_cell(t["id"], "bu", canon["bu"])
+                    pgdb.update_entry_cell(t["id"], "finance_cat", canon["finance_cat"])
+                    pgdb.update_entry_cell(t["id"], "marketing_cat", canon["marketing_cat"])
+                    pgdb.update_entry_cell(t["id"], "updated_at", now)
+                else:
+                    ws.update(f"I{t['sheet_row']}:K{t['sheet_row']}",
+                              [[canon["bu"], canon["finance_cat"], canon["marketing_cat"]]])
+                    ws.update(f"X{t['sheet_row']}", [[now]])
+                updated += 1
+            except Exception as ex: failed.append({"id":t["id"], "error":str(ex)})
+        if not USE_POSTGRES: invalidate_cache(TAB_ENTRIES)
+        result["updated"] = updated; result["failed"] = failed
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
+
+
 # -- ANALYTICS ------------------------------------------------------------
 @app.route("/api/analytics")
 @require_login
