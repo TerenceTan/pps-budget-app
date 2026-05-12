@@ -936,15 +936,18 @@ def api_export():
 def api_export_xlsx():
     from export_xlsx import build_finance_export; import tempfile
     u=session["user"]
+    qf=request.args.get("quarter","").strip()
     if USE_POSTGRES:
         ae=pgdb.get_all(TAB_ENTRIES); ac=pgdb.get_all(TAB_CHANNELS); ab=pgdb.get_all(TAB_BUDGETS)
     else:
         ae=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES); ac=safe_get_records(get_sheet(TAB_CHANNELS),TAB_CHANNELS); ab=safe_get_records(get_sheet(TAB_BUDGETS),TAB_BUDGETS)
     if u!=ADMIN_MARKET: ae=[e for e in ae if str(e.get("country",""))==u]; ac=[c for c in ac if str(c.get("country",""))==u]; ab=[b for b in ab if str(b.get("country",""))==u]
+    if qf: ae=[e for e in ae if str(e.get("quarter",""))==qf]; ac=[c for c in ac if str(c.get("quarter",""))==qf]; ab=[b for b in ab if str(b.get("quarter",""))==qf]
     tmp=tempfile.NamedTemporaryFile(suffix=".xlsx",delete=False); tmp.close()
     try: build_finance_export(tmp.name,ae,ac,ab)
     except Exception as ex: os.unlink(tmp.name); import traceback; traceback.print_exc(); return jsonify({"error":f"Export failed: {ex}"}),500
-    resp=send_file(tmp.name,mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",as_attachment=True,download_name=f"APAC_FY26_{'ALL' if u==ADMIN_MARKET else u}_{datetime.now().strftime('%Y-%m-%d')}.xlsx")
+    qtag=f"_{qf}" if qf else ""
+    resp=send_file(tmp.name,mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",as_attachment=True,download_name=f"APAC_FY26_{'ALL' if u==ADMIN_MARKET else u}{qtag}_{datetime.now().strftime('%Y-%m-%d')}.xlsx")
     @resp.call_on_close
     def cleanup():
         try: os.unlink(tmp.name)

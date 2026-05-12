@@ -40,6 +40,13 @@ MONTH_DATES = [
 MONTH_KEYS = ["2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
               "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"]
 
+# Fallback when an entry has a missing/malformed `month` field: place it in
+# the last month of its quarter so the monthly grid still totals to the same
+# value as the per-row planned column. Without this, col G (monthly sum)
+# silently drops the entry while col H (entry.planned) keeps it, producing
+# the screen-vs-Excel mismatch reported on 2026-05-12.
+QUARTER_FALLBACK_IDX = {"Q1": 2, "Q2": 5, "Q3": 8, "Q4": 11}
+
 COL_ACCOUNT=1; COL_OWNER=2; COL_CATEGORY=3; COL_COUNTRY=4; COL_VENDOR=5; COL_NOTE=6
 COL_FY26_ACT=7; COL_FY26_BUD=8; COL_VAR_CHECK=9
 COL_YTD_BUD=11; COL_YTD_ACT=12; COL_YTD_VAR=13
@@ -185,8 +192,16 @@ def build_finance_export(output_path, entries, channels, budgets, current_month_
             planned=float(entry.get("planned") or 0)
             actual=float(entry.get("actual") or 0)
 
+            # Resolve the target month-column index. If `month` is a known
+            # FY26 month, use it. Otherwise fall back to the last month of
+            # the entry's quarter so the value still appears in the grid.
+            if month_val in MONTH_KEYS:
+                target_idx = MONTH_KEYS.index(month_val)
+            else:
+                target_idx = QUARTER_FALLBACK_IDX.get(str(entry.get("quarter","")).strip(), -1)
+
             for i in range(12):
-                is_entry_month=(MONTH_KEYS[i]==month_val)
+                is_entry_month=(i==target_idx)
                 ws.cell(r,COL_BUD_START+i,planned if is_entry_month else 0)
                 _s(ws.cell(r,COL_BUD_START+i),bg=row_bg,fc=C_BLUE_INPUT,nf=NUM_FMT)
                 ws.cell(r,COL_BUD_START+i).border=_border("DDDDDD")

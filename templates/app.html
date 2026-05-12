@@ -439,7 +439,7 @@ function buildDash(){
   tb+=`<div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderDash()">${q}</button>`).join('')}</div></div>
     <div style="display:flex;gap:8px">
       <a href="/api/export" class="btn btn-e btn-sm">&#x2193; CSV</a>
-      <a href="/api/export/xlsx" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
+      <a href="/api/export/xlsx?quarter=${quarter}" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
       <button class="btn btn-p btn-sm" onclick="openEM(null,null,null)">+ Add Entry</button>
     </div>
   </div>`;
@@ -1081,7 +1081,7 @@ function buildReconPage(data){
     <div style="display:flex;gap:8px;align-items:center">
       <div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderRecon()">${q}</button>`).join('')}</div>
       <a href="/api/export" class="btn btn-e btn-sm">&#x2193; Export</a>
-      <a href="/api/export/xlsx" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
+      <a href="/api/export/xlsx?quarter=${quarter}" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
     </div>
   </div>`;
 
