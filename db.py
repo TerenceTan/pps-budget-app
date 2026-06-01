@@ -40,6 +40,22 @@ def get_cursor():
         reset_connection()
         raise
 
+
+def ensure_schema():
+    """Idempotent schema bootstrap — run once at process start.
+    Adds columns/indexes that newer code expects on long-lived DBs. Safe to
+    re-run: every statement uses IF NOT EXISTS."""
+    statements = [
+        "ALTER TABLE entries ADD COLUMN IF NOT EXISTS is_brand_uplift BOOLEAN DEFAULT FALSE",
+        "CREATE INDEX IF NOT EXISTS idx_entries_buc ON entries(is_brand_uplift) WHERE is_brand_uplift = TRUE",
+    ]
+    try:
+        with get_cursor() as cur:
+            for sql in statements:
+                cur.execute(sql)
+    except Exception as e:
+        print(f"[DB] ensure_schema warning: {e}")
+
 # ── TABLE NAME MAP ────────────────────────────────────────────
 # Maps Google Sheets tab names to PostgreSQL table names
 TAB_TO_TABLE = {

@@ -29,6 +29,11 @@ import api_uploads
 if USE_POSTGRES:
     import db as pgdb
     print("[MODE] PostgreSQL mode enabled")
+    try:
+        pgdb.ensure_schema()
+        print("[DB] ensure_schema ran")
+    except Exception as _e:
+        print(f"[DB] ensure_schema skipped: {_e}")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
