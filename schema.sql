@@ -58,10 +58,12 @@ CREATE TABLE IF NOT EXISTS entries (
     invoice_data    TEXT DEFAULT '[]',
     entered_by      TEXT DEFAULT '',
     created_at      TEXT,
-    updated_at      TEXT
+    updated_at      TEXT,
+    is_brand_uplift BOOLEAN DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS idx_entries_cq ON entries(country, quarter);
 CREATE INDEX IF NOT EXISTS idx_entries_ch ON entries(channel_id);
+CREATE INDEX IF NOT EXISTS idx_entries_buc ON entries(is_brand_uplift) WHERE is_brand_uplift = TRUE;
 
 CREATE TABLE IF NOT EXISTS channel_mapping (
     channel_keyword TEXT PRIMARY KEY,

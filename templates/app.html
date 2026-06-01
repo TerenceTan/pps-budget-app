@@ -361,17 +361,30 @@ function render(){
 
 // ── DATA CACHE ──────────────────────────────────────────────
 let _cache = { budget: null, entries: null, cacheKey: null };
-function cacheKey(){ return `${country}|${quarter}`; }
+window._campaignType = window._campaignType || 'all';  // 'all' | 'bau' | 'buc'
+function cacheKey(){ return `${country}|${quarter}|${window._campaignType}`; }
 async function loadData(force=false){
   const key = cacheKey();
   if(!force && _cache.cacheKey===key && _cache.budget && _cache.entries!==null){
     budgetData = _cache.budget; entries = _cache.entries; return;
   }
-  const [b,e] = await Promise.all([api(`/api/budget/${country}/${quarter}`), api(`/api/entries/${country}/${quarter}`)]);
+  const ct = window._campaignType && window._campaignType !== 'all' ? `?campaign_type=${window._campaignType}` : '';
+  const [b,e] = await Promise.all([api(`/api/budget/${country}/${quarter}`), api(`/api/entries/${country}/${quarter}${ct}`)]);
   budgetData = b; entries = e;
   _cache = { budget:b, entries:e, cacheKey:key };
 }
 function invalidateCache(){ _cache.cacheKey = null; }
+function setCampaignType(v, rerender){
+  window._campaignType = v;
+  invalidateCache();
+  if(rerender === 'dash') renderDash();
+  else if(rerender === 'an') renderAnalytics();
+}
+function campaignToggleHtml(rerender){
+  const v = window._campaignType || 'all';
+  const opt = (val,lbl) => `<button class="qtab ${v===val?'active':''}" onclick="setCampaignType('${val}','${rerender}')">${lbl}</button>`;
+  return `<div class="qtabs" title="Filter: BAU = standard performance marketing. BUC = Brand Uplift Campaign.">${opt('all','All')}${opt('bau','BAU')}${opt('buc','BUC')}</div>`;
+}
 
 // ===================================================================
 // DASHBOARD
@@ -436,7 +449,7 @@ function buildDash(){
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
   if(ROLE!=='country' || MARKETS.length>1) tb+=`<select onchange="country=this.value;renderDash()" style="padding:6px 24px 6px 10px;font-size:12px;border:1px solid var(--b);border-radius:var(--r);appearance:none;cursor:pointer;outline:none;${SBG}">${MARKETS.map(m=>`<option value="${m}" ${m===country?'selected':''}>${m}</option>`).join('')}</select>`;
   else tb+=`<span style="font-weight:600;font-size:13px;padding:6px 0">${country}</span>`;
-  tb+=`<div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderDash()">${q}</button>`).join('')}</div></div>
+  tb+=`<div class="qtabs">${QS.map(q=>`<button class="qtab ${q===quarter?'active':''}" onclick="quarter='${q}';renderDash()">${q}</button>`).join('')}</div>${campaignToggleHtml('dash')}</div>
     <div style="display:flex;gap:8px">
       <a href="/api/export" class="btn btn-e btn-sm">&#x2193; CSV</a>
       <a href="/api/export/xlsx?quarter=${quarter}" class="btn btn-e btn-sm" style="background:#E2EFDA;color:#1F4E39;border-color:#A8D08D">&#x2193; Excel</a>
@@ -566,9 +579,11 @@ async function renderAnalytics(){
   try{
     const aq = window._analyticsQ || '';
     const am = window._analyticsM || '';
+    const ct = window._campaignType || 'all';
     const params=[];
     if(aq) params.push('quarter='+encodeURIComponent(aq));
     if(am) params.push('month='+encodeURIComponent(am));
+    if(ct && ct !== 'all') params.push('campaign_type='+encodeURIComponent(ct));
     const data = await api('/api/analytics'+(params.length?'?'+params.join('&'):''));
     _anRawData = data;
     buildAnalyticsPage(data);
@@ -602,6 +617,7 @@ function buildAnalyticsPage(data){
     ${ddFilter('an_ch','Channel',anChannels,function(){anApplyFilters()})}
     ${ddFilter('an_mc','Marketing Cat',anMktCats,function(){anApplyFilters()})}
     ${ddFilter('an_mo','Month',anMonthLabels,function(){anApplyMonth()})}
+    ${campaignToggleHtml('an')}
     <button class="btn btn-g btn-xs" onclick="ddClearAll();window._analyticsM='';renderAnalytics()">Clear Filters</button>
     <span id="an-f-info" style="font-size:10px;color:var(--t3)"></span>
   </div>`;

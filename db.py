@@ -156,18 +156,25 @@ def find_activity(channel_id, country, quarter, name):
 # ── ENTRIES ───────────────────────────────────────────────────
 
 def insert_entry(row_list):
-    """Insert entry from a list matching ENTRY_HEADERS order."""
+    """Insert entry from a list matching ENTRY_HEADERS order.
+    Accepts 24 values (legacy) or 25 (with trailing is_brand_uplift)."""
+    if len(row_list) == 24:
+        row_list = list(row_list) + [False]
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO entries (id, country, quarter, month, channel_id, channel_name,
                 activity_id, activity_name, bu, finance_cat, marketing_cat, description,
                 planned, confirmed, actual, jira, vendor, notes, approved,
-                invoice_names, invoice_data, entered_by, created_at, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                invoice_names, invoice_data, entered_by, created_at, updated_at,
+                is_brand_uplift)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, row_list)
 
 def update_entry_full(id, row_list):
-    """Update all columns of an entry (row_list excludes id, has 23 values)."""
+    """Update all columns of an entry (row_list excludes id).
+    Accepts 23 values (legacy) or 24 (with trailing is_brand_uplift)."""
+    if len(row_list) == 23:
+        row_list = list(row_list) + [False]
     with get_cursor() as cur:
         cur.execute("""
             UPDATE entries SET country=%s, quarter=%s, month=%s, channel_id=%s,
@@ -175,7 +182,8 @@ def update_entry_full(id, row_list):
                 finance_cat=%s, marketing_cat=%s, description=%s,
                 planned=%s, confirmed=%s, actual=%s, jira=%s, vendor=%s, notes=%s,
                 approved=%s, invoice_names=%s, invoice_data=%s,
-                entered_by=%s, created_at=%s, updated_at=%s
+                entered_by=%s, created_at=%s, updated_at=%s,
+                is_brand_uplift=%s
             WHERE id=%s
         """, row_list + [id])
 
