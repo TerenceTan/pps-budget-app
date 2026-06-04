@@ -47,7 +47,7 @@ def ensure_schema():
     re-run: every statement uses IF NOT EXISTS."""
     statements = [
         "ALTER TABLE entries ADD COLUMN IF NOT EXISTS is_brand_uplift BOOLEAN DEFAULT FALSE",
-        "CREATE INDEX IF NOT EXISTS idx_entries_buc ON entries(is_brand_uplift) WHERE is_brand_uplift = TRUE",
+        "ALTER TABLE entries ADD COLUMN IF NOT EXISTS actual_buc NUMERIC(14,2) DEFAULT 0",
     ]
     try:
         with get_cursor() as cur:
@@ -173,24 +173,30 @@ def find_activity(channel_id, country, quarter, name):
 
 def insert_entry(row_list):
     """Insert entry from a list matching ENTRY_HEADERS order.
-    Accepts 24 values (legacy) or 25 (with trailing is_brand_uplift)."""
+    Accepts 24 (legacy), 25 (with is_brand_uplift), or 26 (+ actual_buc) values."""
+    row_list = list(row_list)
     if len(row_list) == 24:
-        row_list = list(row_list) + [False]
+        row_list += [False, 0]      # is_brand_uplift, actual_buc
+    elif len(row_list) == 25:
+        row_list += [0]             # actual_buc
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO entries (id, country, quarter, month, channel_id, channel_name,
                 activity_id, activity_name, bu, finance_cat, marketing_cat, description,
                 planned, confirmed, actual, jira, vendor, notes, approved,
                 invoice_names, invoice_data, entered_by, created_at, updated_at,
-                is_brand_uplift)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                is_brand_uplift, actual_buc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, row_list)
 
 def update_entry_full(id, row_list):
     """Update all columns of an entry (row_list excludes id).
-    Accepts 23 values (legacy) or 24 (with trailing is_brand_uplift)."""
+    Accepts 23 (legacy), 24 (+ is_brand_uplift), or 25 (+ actual_buc) values."""
+    row_list = list(row_list)
     if len(row_list) == 23:
-        row_list = list(row_list) + [False]
+        row_list += [False, 0]
+    elif len(row_list) == 24:
+        row_list += [0]
     with get_cursor() as cur:
         cur.execute("""
             UPDATE entries SET country=%s, quarter=%s, month=%s, channel_id=%s,
@@ -199,7 +205,7 @@ def update_entry_full(id, row_list):
                 planned=%s, confirmed=%s, actual=%s, jira=%s, vendor=%s, notes=%s,
                 approved=%s, invoice_names=%s, invoice_data=%s,
                 entered_by=%s, created_at=%s, updated_at=%s,
-                is_brand_uplift=%s
+                is_brand_uplift=%s, actual_buc=%s
             WHERE id=%s
         """, row_list + [id])
 

@@ -59,11 +59,11 @@ CREATE TABLE IF NOT EXISTS entries (
     entered_by      TEXT DEFAULT '',
     created_at      TEXT,
     updated_at      TEXT,
-    is_brand_uplift BOOLEAN DEFAULT FALSE
+    is_brand_uplift BOOLEAN DEFAULT FALSE,    -- deprecated; kept for back-compat. New code uses actual_buc.
+    actual_buc      NUMERIC(14,2) DEFAULT 0    -- portion of `actual` attributable to Brand Uplift Campaigns
 );
 CREATE INDEX IF NOT EXISTS idx_entries_cq ON entries(country, quarter);
 CREATE INDEX IF NOT EXISTS idx_entries_ch ON entries(channel_id);
-CREATE INDEX IF NOT EXISTS idx_entries_buc ON entries(is_brand_uplift) WHERE is_brand_uplift = TRUE;
 
 CREATE TABLE IF NOT EXISTS channel_mapping (
     channel_keyword TEXT PRIMARY KEY,

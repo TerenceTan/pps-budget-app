@@ -302,13 +302,28 @@ def api_get_entries(country, quarter):
     if not check_country_access(country): return jsonify({"error":"Forbidden"}),403
     try:
         rows = pgdb.get_filtered(TAB_ENTRIES,country=country,quarter=quarter) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=country,quarter=quarter)
-        # campaign_type filter: all (default) | bau | buc
+        # campaign_type reinterprets `actual` instead of filtering rows:
+        #   all (default) → actual = total (BAU + BUC)
+        #   bau           → actual = total − actual_buc; drop rows that become empty
+        #   buc           → actual = actual_buc;        drop rows with no BUC
         ct = request.args.get("campaign_type","all").lower()
-        if ct == "buc":
-            rows = [r for r in rows if bool(r.get("is_brand_uplift") or False)]
-        elif ct == "bau":
-            rows = [r for r in rows if not bool(r.get("is_brand_uplift") or False)]
-        return jsonify([{"id":r["id"],"country":r["country"],"quarter":r["quarter"],"month":r["month"],"channel_id":r["channel_id"],"channel_name":r["channel_name"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"],"activity_id":r.get("activity_id",""),"activity_name":r.get("activity_name",""),"description":r["description"],"planned":float(r["planned"] or 0),"confirmed":float(r["confirmed"] or 0),"actual":float(r["actual"] or 0),"jira":r["jira"],"vendor":r["vendor"],"notes":r["notes"],"approved":str(r["approved"]).lower()=="true","invoice_names":json.loads(r["invoice_names"]) if r.get("invoice_names") else [],"entered_by":r["entered_by"],"updated_at":r["updated_at"],"is_brand_uplift":bool(r.get("is_brand_uplift") or False)} for r in rows])
+        out = []
+        for r in rows:
+            total = float(r.get("actual") or 0)
+            buc = float(r.get("actual_buc") or 0)
+            pln = float(r.get("planned") or 0)
+            con = float(r.get("confirmed") or 0)
+            if ct == "buc":
+                if buc <= 0: continue
+                shown = buc
+            elif ct == "bau":
+                bau = total - buc
+                if bau <= 0 and pln <= 0 and con <= 0: continue
+                shown = bau
+            else:
+                shown = total
+            out.append({"id":r["id"],"country":r["country"],"quarter":r["quarter"],"month":r["month"],"channel_id":r["channel_id"],"channel_name":r["channel_name"],"bu":r["bu"],"finance_cat":r["finance_cat"],"marketing_cat":r["marketing_cat"],"activity_id":r.get("activity_id",""),"activity_name":r.get("activity_name",""),"description":r["description"],"planned":pln,"confirmed":con,"actual":round(shown,2),"actual_total":round(total,2),"actual_buc":round(buc,2),"jira":r["jira"],"vendor":r["vendor"],"notes":r["notes"],"approved":str(r["approved"]).lower()=="true","invoice_names":json.loads(r["invoice_names"]) if r.get("invoice_names") else [],"entered_by":r["entered_by"],"updated_at":r["updated_at"]})
+        return jsonify(out)
     except Exception as e: return jsonify({"error":str(e)}),500
 
 @app.route("/api/entries", methods=["POST"])
@@ -812,13 +827,29 @@ def api_analytics():
         if mf:
             months = {m.strip() for m in mf.split(",") if m.strip()}
             ae = [e for e in ae if str(e.get("month","")) in months]
-        # campaign_type filter: all (default) | bau | buc — only applies to entries,
-        # never to channel budgets, so totals stay comparable to the configured budget.
+        # campaign_type reinterprets each entry's `actual` instead of filtering rows.
+        # Only applies to entries, never to channel budgets, so totals stay comparable
+        # to the configured budget.
         ct = request.args.get("campaign_type","all").lower()
-        if ct == "buc":
-            ae = [e for e in ae if bool(e.get("is_brand_uplift") or False)]
-        elif ct == "bau":
-            ae = [e for e in ae if not bool(e.get("is_brand_uplift") or False)]
+        if ct in ("bau","buc"):
+            adjusted = []
+            for e in ae:
+                e2 = dict(e)
+                total = float(e.get("actual") or 0)
+                buc = float(e.get("actual_buc") or 0)
+                if ct == "buc":
+                    if buc <= 0:
+                        # drop pure-BAU rows entirely; planned/confirmed only apply to BAU
+                        continue
+                    e2["actual"] = round(buc, 2)
+                    e2["planned"] = 0
+                    e2["confirmed"] = 0
+                else:  # bau
+                    bau = total - buc
+                    e2["actual"] = round(max(bau, 0), 2)
+                    # keep planned + confirmed — those are BAU concepts
+                adjusted.append(e2)
+            ae = adjusted
         tb=sum(float(b.get("total_budget") or 0) for b in ab); tp=sum(float(e.get("planned") or 0) for e in ae); tc=sum(float(e.get("confirmed") or 0) for e in ae); ta=sum(float(e.get("actual") or 0) for e in ae)
         bc=defaultdict(lambda:{"budget":0,"planned":0,"confirmed":0,"actual":0,"entries":0})
         for b in ab: bc[str(b["country"])]["budget"]+=float(b.get("total_budget") or 0)

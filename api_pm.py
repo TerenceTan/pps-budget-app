@@ -59,16 +59,16 @@ BUC_SQL_PREDICATE = (
 
 def _bq_fetch_pm_data(q_filter=None):
     """Query BigQuery. Returns (agg_rows, total_raw_rows).
-    Each agg_row has: country, channel_group (NORMALISED), month_key, quarter,
-    is_brand_uplift, spend, ql, ft, rows."""
+    One agg_row per (country, channel_group, month). Total spend goes into
+    `spend`; the BUC portion of that spend goes into `spend_buc`."""
     client = _get_bq_client()
     table_ref = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_TABLE}`"
     apac_countries = "','".join(PM_COUNTRY_MAP.keys())
     query = f"""
     SELECT Country, Channel_Group,
-        {BUC_SQL_PREDICATE} AS is_brand_uplift,
         EXTRACT(YEAR FROM Date) AS yr, EXTRACT(MONTH FROM Date) AS mo,
         SUM(IFNULL(Spend_AUD, 0)) AS total_spend,
+        SUM(IF({BUC_SQL_PREDICATE}, IFNULL(Spend_AUD, 0), 0)) AS buc_spend,
         SUM(IFNULL(QL, 0)) AS total_ql,
         SUM(IFNULL(FT, 0)) AS total_ft,
         COUNT(*) AS row_count
@@ -76,13 +76,13 @@ def _bq_fetch_pm_data(q_filter=None):
     WHERE Country IN ('{apac_countries}')
       AND Channel_Group IS NOT NULL
       AND Channel_Group NOT IN ('Organic', 'IB', '')
-    GROUP BY Country, Channel_Group, is_brand_uplift, yr, mo
-    ORDER BY Country, Channel_Group, is_brand_uplift, yr, mo
+    GROUP BY Country, Channel_Group, yr, mo
+    ORDER BY Country, Channel_Group, yr, mo
     """
     results = list(client.query(query).result())
     total_raw_rows = 0
     # RE-AGGREGATE after normalisation — "Meta HK" and "Meta Agency" collapse to "Meta"
-    bucket = defaultdict(lambda: {"spend":0.0, "ql":0, "ft":0, "rows":0})
+    bucket = defaultdict(lambda: {"spend":0.0, "spend_buc":0.0, "ql":0, "ft":0, "rows":0})
     for row in results:
         tracker_country = PM_COUNTRY_MAP.get(str(row.Country or '').strip())
         if not tracker_country:
@@ -98,23 +98,23 @@ def _bq_fetch_pm_data(q_filter=None):
             continue
         raw_cg = str(row.Channel_Group or '').strip()
         cg_norm = normalise_channel_group(raw_cg)
-        is_buc = bool(row.is_brand_uplift)
         rc = int(row.row_count or 0)
         total_raw_rows += rc
-        k = (tracker_country, cg_norm, month_key, quarter, is_buc)
-        bucket[k]["spend"] += float(row.total_spend or 0)
-        bucket[k]["ql"]    += int(row.total_ql or 0)
-        bucket[k]["ft"]    += int(row.total_ft or 0)
-        bucket[k]["rows"]  += rc
+        k = (tracker_country, cg_norm, month_key, quarter)
+        bucket[k]["spend"]     += float(row.total_spend or 0)
+        bucket[k]["spend_buc"] += float(row.buc_spend or 0)
+        bucket[k]["ql"]        += int(row.total_ql or 0)
+        bucket[k]["ft"]        += int(row.total_ft or 0)
+        bucket[k]["rows"]      += rc
     agg_rows = []
-    for (country, cg_norm, month_key, quarter, is_buc), v in bucket.items():
+    for (country, cg_norm, month_key, quarter), v in bucket.items():
         agg_rows.append({
             "country": country,
             "channel_group": cg_norm,
             "month_key": month_key,
             "quarter": quarter,
-            "is_brand_uplift": is_buc,
             "spend": round(v["spend"], 2),
+            "spend_buc": round(v["spend_buc"], 2),
             "ql": round(v["ql"]),
             "ft": round(v["ft"]),
             "rows": v["rows"],
@@ -133,15 +133,15 @@ def preview():
         q_filter = request.args.get("quarter", "")
         agg_rows, total_raw_rows = _bq_fetch_pm_data(q_filter or None)
         preview_rows = []
-        for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["is_brand_uplift"], x["month_key"])):
+        for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["month_key"])):
             mapping = PM_CHANNEL_MAP.get(r["channel_group"], PM_DEFAULT_MAPPING)
             preview_rows.append({
                 "country": r["country"],
                 "channel_group": r["channel_group"],
                 "month": r["month_key"],
                 "quarter": r["quarter"],
-                "is_brand_uplift": r["is_brand_uplift"],
                 "spend": r["spend"],
+                "spend_buc": r["spend_buc"],
                 "ql": r["ql"],
                 "ft": r["ft"],
                 "rows": r["rows"],
@@ -232,8 +232,8 @@ def sync():
         quarter = row.get("quarter","")
         month = row.get("month","")
         spend = float(row.get("spend", 0))
+        spend_buc = float(row.get("spend_buc", 0))
         channel_group = row.get("channel_group","")
-        is_buc = bool(row.get("is_brand_uplift", False))
         if spend <= 0:
             skipped += 1
             continue
@@ -253,17 +253,17 @@ def sync():
             activities_created += 1
 
         entry_id = "pm_" + str(uuid.uuid4())[:10]
-        buc_tag = " [BUC]" if is_buc else ""
         entry_row = [
             entry_id, country, quarter, month, channel_id, mapped_channel,
             activity_id, mapped_activity,
             mapping.get("bu",""), mapping.get("finance_cat",""), mapping.get("marketing_cat",""),
-            f"PM Sync: {channel_group}{buc_tag}",
+            f"PM Sync: {channel_group}",
             0, 0, round(spend, 2),
             "", mapped_activity, f"Synced from BigQuery {now[:10]}",
             "False", "[]", "[]",
             session.get("username","pm_sync"), now, now,
-            is_buc,
+            False,                 # is_brand_uplift — deprecated, kept for back-compat
+            round(spend_buc, 2),   # actual_buc — BUC portion of `actual`
         ]
         if USE_POSTGRES:
             pgdb.insert_entry(entry_row)
@@ -316,11 +316,8 @@ def auto_sync():
                                   if float(b.get("total_budget") or 0) > 0) | set(MARKETS)
         now = datetime.utcnow().isoformat()
 
-        # Build lookup for existing pm_ entries by country+channel_id+activity_id+month+is_brand_uplift.
-        # Post-migration, pm_ entries have correct channel_id/activity_id pointing to
-        # the umbrella channel, so we match on IDs directly — much more robust than
-        # the old string-parsing approach. is_brand_uplift is part of the key so that
-        # BUC and BAU spend stay as two separate rows per (country, channel, activity, month).
+        # Build lookup for existing pm_ entries by (country, channel_id, activity_id, month).
+        # One row per cell now — `actual` holds the total, `actual_buc` the BUC portion.
         existing_pm = {}
         for idx, e in enumerate(existing_entries):
             eid = str(e.get("id",""))
@@ -330,29 +327,27 @@ def auto_sync():
             mo = str(e.get("month",""))
             ch_id = str(e.get("channel_id",""))
             act_id = str(e.get("activity_id",""))
-            buc_flag = bool(e.get("is_brand_uplift") or False)
             if co and mo and ch_id and act_id:
-                existing_pm[f"{co}|{ch_id}|{act_id}|{mo}|{int(buc_flag)}"] = {"idx":idx, "entry":e}
+                existing_pm[f"{co}|{ch_id}|{act_id}|{mo}"] = {"idx":idx, "entry":e}
 
         synced, updated, skipped = 0, 0, 0
         activities_created = 0
         skip_reasons = []
         _write_count = 0
 
-        for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["is_brand_uplift"], x["month_key"])):
+        for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["month_key"])):
             country = r["country"]
             channel_group = r["channel_group"]
             month_key = r["month_key"]
             quarter = r["quarter"]
-            is_buc = bool(r["is_brand_uplift"])
             spend = round(r["spend"], 2)
+            spend_buc = round(r.get("spend_buc", 0), 2)
 
             if country not in valid_countries:
                 skipped += 1
                 continue
-            if spend <= 0:
-                skipped += 1
-                continue
+            # Note: we still process spend == 0 cells when an existing row needs to
+            # be zeroed (e.g. BQ reclassified all activity to a different channel).
 
             mapping = PM_CHANNEL_MAP.get(channel_group, PM_DEFAULT_MAPPING)
             mapped_channel = mapping["channel_name"]
@@ -364,86 +359,100 @@ def auto_sync():
             # HARD RULE: never create channels
             ch = _find_channel(existing_channels, country, quarter, mapped_channel)
             if not ch:
-                skipped += 1
-                reason = f"{country}/{quarter}: '{mapped_channel}' channel not set up"
-                if reason not in skip_reasons:
-                    skip_reasons.append(reason)
+                if spend > 0:
+                    skipped += 1
+                    reason = f"{country}/{quarter}: '{mapped_channel}' channel not set up"
+                    if reason not in skip_reasons:
+                        skip_reasons.append(reason)
                 continue
             channel_id = str(ch["id"])
 
-            activity_id, act_created = _ensure_activity(
-                ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now)
-            if act_created:
-                activities_created += 1
+            # Find an existing activity by name without creating one; only materialise
+            # an activity when there's positive spend to record.
+            target_act = _norm(mapped_activity)
+            activity_id = None
+            for a in existing_activities:
+                if (str(a.get("channel_id","")) == channel_id
+                    and str(a.get("country","")) == country
+                    and str(a.get("quarter","")) == quarter
+                    and _norm(a.get("name","")) == target_act):
+                    activity_id = str(a["id"])
+                    break
+            if activity_id is None:
+                if spend <= 0:
+                    skipped += 1
+                    continue
+                activity_id, act_created = _ensure_activity(
+                    ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now)
+                if act_created:
+                    activities_created += 1
 
-            lookup_key = f"{country}|{channel_id}|{activity_id}|{month_key}|{int(is_buc)}"
+            lookup_key = f"{country}|{channel_id}|{activity_id}|{month_key}"
             existing = existing_pm.get(lookup_key)
-
-            buc_tag = " [BUC]" if is_buc else ""
 
             if existing:
                 e = existing["entry"]
                 old_spend = float(e.get("actual") or 0)
-                old_buc = bool(e.get("is_brand_uplift") or False)
-                # Skip only if actual, classification AND BUC flag all match the
-                # canonical mapping. Otherwise rewrite to fix stale fields.
+                old_buc = float(e.get("actual_buc") or 0)
+                # Skip only if actual, BUC portion, AND classification all match.
                 classification_drift = (
                     str(e.get("bu","")) != mapped_bu
                     or str(e.get("finance_cat","")) != mapped_finance_cat
                     or str(e.get("marketing_cat","")) != mapped_marketing_cat
-                    or old_buc != is_buc
                 )
-                if abs(spend - old_spend) < 0.01 and not classification_drift:
+                if (abs(spend - old_spend) < 0.01
+                    and abs(spend_buc - old_buc) < 0.01
+                    and not classification_drift):
                     skipped += 1
                     continue
                 sheet_row = existing["idx"] + 2
                 try:
-                    # Full row rewrite. bu / finance_cat / marketing_cat ALWAYS take
-                    # the canonical value from PM_CHANNEL_MAP — previously these were
-                    # "keep existing if non-empty", which froze stale categorisation
-                    # (e.g. a Douyin row stuck at finance_cat='PPC' from first sync).
                     row_vals = [
                         str(e.get("country","")), str(e.get("quarter","")), str(e.get("month","")),
                         channel_id, mapped_channel, activity_id, mapped_activity,
                         mapped_bu,
                         mapped_finance_cat,
                         mapped_marketing_cat,
-                        f"{channel_group}{buc_tag}: ${spend:,.0f} AUD",
-                        0,                                     # planned — always zero for pm_ entries
-                        float(e.get("confirmed") or 0),        # confirmed — untouched
-                        spend,                                 # actual — updated
+                        f"{channel_group}: ${spend:,.0f} AUD" + (f" (BUC ${spend_buc:,.0f})" if spend_buc > 0 else ""),
+                        0,                                     # planned — left as-is for pm_ rows
+                        float(e.get("confirmed") or 0),
+                        spend,                                 # actual — total
                         str(e.get("jira","")), mapped_activity, str(e.get("notes","")),
                         str(e.get("approved","False")),
                         str(e.get("invoice_names","[]")), str(e.get("invoice_data","[]")),
                         str(e.get("entered_by","")), str(e.get("created_at","")), now,
-                        is_buc,
+                        False,                                 # is_brand_uplift — deprecated
+                        spend_buc,                             # actual_buc — BUC portion
                     ]
                     if USE_POSTGRES:
                         pgdb.update_entry_full(str(e.get("id","")), row_vals)
                     else:
-                        # Columns A..Y (25 cols) — full rewrite of the row
-                        ws_entries.update(f"A{sheet_row}:Y{sheet_row}", [[str(e.get("id",""))] + row_vals])
+                        ws_entries.update(f"A{sheet_row}:Z{sheet_row}", [[str(e.get("id",""))] + row_vals])
                         _write_count += 1
                         if _write_count % 25 == 0:
-                            time.sleep(1)  # throttle to stay under API quota
+                            time.sleep(1)
                     updated += 1
                 except Exception as ue:
                     print(f"Auto-sync error row {sheet_row}: {ue}")
                     skipped += 1
                 continue
 
-            # Create new pm_ entry
+            # No existing row — only create one if there's spend
+            if spend <= 0:
+                skipped += 1
+                continue
             entry_id = "pm_" + str(uuid.uuid4())[:10]
             entry_row = [
                 entry_id, country, quarter, month_key, channel_id, mapped_channel,
                 activity_id, mapped_activity,
                 mapped_bu, mapped_finance_cat, mapped_marketing_cat,
-                f"{channel_group}{buc_tag}: ${spend:,.0f} AUD",
+                f"{channel_group}: ${spend:,.0f} AUD" + (f" (BUC ${spend_buc:,.0f})" if spend_buc > 0 else ""),
                 0, 0, spend,
                 "", mapped_activity, f"Auto-synced {now[:10]}",
                 "False", "[]", "[]",
                 session.get("username","pm_auto"), now, now,
-                is_buc,
+                False,                                         # is_brand_uplift — deprecated
+                spend_buc,                                     # actual_buc
             ]
             if USE_POSTGRES:
                 pgdb.insert_entry(entry_row)
@@ -452,7 +461,7 @@ def auto_sync():
                 _write_count += 1
                 if _write_count % 25 == 0:
                     time.sleep(1)
-            existing_pm[lookup_key] = {"idx": len(existing_entries), "entry": {"actual": spend, "is_brand_uplift": is_buc}}
+            existing_pm[lookup_key] = {"idx": len(existing_entries), "entry": {"actual": spend, "actual_buc": spend_buc}}
             existing_entries.append({})
             synced += 1
 
