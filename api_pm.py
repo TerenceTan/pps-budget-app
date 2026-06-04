@@ -316,19 +316,36 @@ def auto_sync():
                                   if float(b.get("total_budget") or 0) > 0) | set(MARKETS)
         now = datetime.utcnow().isoformat()
 
-        # Build lookup for existing pm_ entries by (country, channel_id, activity_id, month).
-        # One row per cell now — `actual` holds the total, `actual_buc` the BUC portion.
+        # Build lookup for existing entries by (country, channel_id, activity_id, month).
+        # One row per cell — `actual` holds the total, `actual_buc` the BUC portion.
+        # Adopts pm_ rows (sync-owned) AND pln_/other rows whose actual = 0
+        # (planned-only rows waiting for actuals). This prevents the structural
+        # duplicate where an upload creates pln_ for a cell, then sync later adds
+        # a separate pm_ for the same cell. Rows with non-zero actual (manual
+        # entries, reconciled rows) are NEVER adopted — sync would create a new
+        # pm_ alongside them instead of overwriting user data.
         existing_pm = {}
         for idx, e in enumerate(existing_entries):
             eid = str(e.get("id",""))
-            if not eid.startswith("pm_"):
-                continue
             co = str(e.get("country",""))
             mo = str(e.get("month",""))
             ch_id = str(e.get("channel_id",""))
             act_id = str(e.get("activity_id",""))
-            if co and mo and ch_id and act_id:
-                existing_pm[f"{co}|{ch_id}|{act_id}|{mo}"] = {"idx":idx, "entry":e}
+            if not (co and mo and ch_id and act_id):
+                continue
+            is_pm = eid.startswith("pm_")
+            if not is_pm and float(e.get("actual") or 0) != 0:
+                # non-pm row with actual data — don't let sync overwrite it
+                continue
+            key = f"{co}|{ch_id}|{act_id}|{mo}"
+            # If both a pm_ and a non-pm_ exist at the key, prefer the pm_ row
+            # (sync-owned by convention). Otherwise first one wins.
+            if key in existing_pm:
+                prev = existing_pm[key]["entry"]
+                if not str(prev.get("id","")).startswith("pm_") and is_pm:
+                    existing_pm[key] = {"idx":idx, "entry":e}
+            else:
+                existing_pm[key] = {"idx":idx, "entry":e}
 
         synced, updated, skipped = 0, 0, 0
         activities_created = 0
@@ -414,7 +431,7 @@ def auto_sync():
                         mapped_finance_cat,
                         mapped_marketing_cat,
                         f"{channel_group}: ${spend:,.0f} AUD" + (f" (BUC ${spend_buc:,.0f})" if spend_buc > 0 else ""),
-                        0,                                     # planned — left as-is for pm_ rows
+                        float(e.get("planned") or 0),          # preserve existing planned (non-zero on adopted pln_ rows)
                         float(e.get("confirmed") or 0),
                         spend,                                 # actual — total
                         str(e.get("jira","")), mapped_activity, str(e.get("notes","")),
