@@ -376,58 +376,6 @@ def api_delete_entry(entry_id):
     if not check_country_access(str(rows[idx].get("country",""))): return jsonify({"error":"Forbidden"}),403
     ws.delete_rows(idx+2); invalidate_cache(TAB_ENTRIES); return jsonify({"ok":True})
 
-# -- ADMIN: find / delete entries by criteria -----------------------------
-# Admin-only inspect tool. Returns lightweight rows matching the given
-# month + optional id_prefix (e.g. "pln_") and optional country list.
-# Pair with /api/admin/delete_entries (explicit id list) to remove them.
-@app.route("/api/admin/find_entries")
-@require_login
-@require_admin
-def api_admin_find_entries():
-    if not USE_POSTGRES:
-        return jsonify({"error":"Postgres-only endpoint"}), 400
-    month = (request.args.get("month") or "").strip()
-    id_prefix = (request.args.get("id_prefix") or "").strip()
-    countries = [c.strip() for c in (request.args.get("countries") or "").split(",") if c.strip()]
-    if not month:
-        return jsonify({"error":"month is required (e.g. 2025-07)"}), 400
-    conds = ["month = %s"]
-    vals = [month]
-    if id_prefix:
-        conds.append("id LIKE %s")
-        vals.append(f"{id_prefix}%")
-    if countries:
-        conds.append("country = ANY(%s)")
-        vals.append(countries)
-    where = " AND ".join(conds)
-    with pgdb.get_cursor() as cur:
-        cur.execute(
-            f"SELECT id, country, quarter, month, channel_name, activity_name, planned, confirmed, actual, description, created_at, entered_by "
-            f"FROM entries WHERE {where} ORDER BY country, channel_name, created_at",
-            vals,
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-    for r in rows:
-        for k in ("planned","confirmed","actual"):
-            r[k] = float(r[k] or 0)
-    return jsonify({"count": len(rows), "rows": rows})
-
-@app.route("/api/admin/delete_entries", methods=["POST"])
-@require_login
-@require_admin
-def api_admin_delete_entries():
-    if not USE_POSTGRES:
-        return jsonify({"error":"Postgres-only endpoint"}), 400
-    data = request.get_json(silent=True) or {}
-    ids = data.get("ids") or []
-    if not isinstance(ids, list) or not ids or len(ids) > 500:
-        return jsonify({"error":"ids must be a non-empty list of <=500 strings"}), 400
-    ids = [str(i) for i in ids if str(i).strip()]
-    with pgdb.get_cursor() as cur:
-        cur.execute("DELETE FROM entries WHERE id = ANY(%s)", (ids,))
-    print(f"[ADMIN] {session.get('username','?')} deleted {len(ids)} entries: {ids[:5]}{'...' if len(ids)>5 else ''}")
-    return jsonify({"ok": True, "deleted": len(ids)})
-
 # -- VENDORS --------------------------------------------------------------
 @app.route("/api/vendors")
 @require_login
