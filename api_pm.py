@@ -47,13 +47,19 @@ def _get_bq_client():
 
 
 # Brand Uplift Campaign detection — applied to the BQ `Campaign` column.
-# Tokens 'BUC', 'brand', 'uplift' catch every known APAC BUC naming style
-# (YouTube YOUTUBE_BUC_*, Meta *-Brand-Uplift-*, Meta *-Brand-Campaign-*,
-#  Bing *[Search] Brand*). 'BU' alone is not used — verified against BQ.
+# Requires an explicit BUC token. We deliberately do NOT match bare 'brand'
+# because that catches search keyword bidding (e.g. "[Search] Brand" on Bing,
+# "*-performance-max-brand" on Google) which is BAU, not Brand Uplift.
+# Tokens covered:
+#   - 'uplift'        → catches Meta "*-Brand-Uplift-*" naming
+#   - 'BUC'           → catches "YOUTUBE_BUC_*", "BUC | ...", "*-BUC-Campaign-*"
+#   - 'Brand Lift'    → catches YouTube "Brand Lift Campaign" naming
+#   - 'Brand-Campaign'→ catches Meta SCB "*-Brand-Campaign-*" naming
 BUC_SQL_PREDICATE = (
-    "(LOWER(Campaign) LIKE '%brand%' "
-    "OR LOWER(Campaign) LIKE '%uplift%' "
-    "OR STRPOS(Campaign, 'BUC') > 0)"
+    "(LOWER(Campaign) LIKE '%uplift%' "
+    "OR STRPOS(Campaign, 'BUC') > 0 "
+    "OR LOWER(Campaign) LIKE '%brand lift%' "
+    "OR LOWER(Campaign) LIKE '%brand-campaign%')"
 )
 
 
