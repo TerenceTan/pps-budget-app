@@ -579,10 +579,14 @@ async function renderAnalytics(){
   try{
     const aq = window._analyticsQ || '';
     const am = window._analyticsM || '';
+    const ach = (window._analyticsCh || []).join(',');
+    const amc = (window._analyticsMc || []).join(',');
     const ct = window._campaignType || 'all';
     const params=[];
     if(aq) params.push('quarter='+encodeURIComponent(aq));
     if(am) params.push('month='+encodeURIComponent(am));
+    if(ach) params.push('channel='+encodeURIComponent(ach));
+    if(amc) params.push('marketing_cat='+encodeURIComponent(amc));
     if(ct && ct !== 'all') params.push('campaign_type='+encodeURIComponent(ct));
     const data = await api('/api/analytics'+(params.length?'?'+params.join('&'):''));
     _anRawData = data;
@@ -598,27 +602,35 @@ function buildAnalyticsPage(data){
   const aq = window._analyticsQ || '';
 
   const anCountries = (data.by_country||[]).map(c=>c.country).sort();
-  const anChannels = (data.by_channel||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.channel).sort();
-  const anMktCats = (data.by_marketing_cat||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.category).sort();
+  // Channel + Marketing Cat dropdowns use UNFILTERED dimension lists from the
+  // server so options don't disappear after selecting one. Falls back to the
+  // filtered by_* lists if the server didn't ship the unfiltered set.
+  const anChannels = (data.available_channels && data.available_channels.length)
+      ? data.available_channels.slice().sort()
+      : (data.by_channel||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.channel).sort();
+  const anMktCats  = (data.available_marketing_cats && data.available_marketing_cats.length)
+      ? data.available_marketing_cats.slice().sort()
+      : (data.by_marketing_cat||[]).filter(c=>c.actual>0||c.planned>0).map(c=>c.category).sort();
   // Restrict month list to current quarter when one is selected
   const anMonthLabels = (aq?MONTHS.filter(m=>m.q===aq):MONTHS).map(m=>m.l);
 
   let html=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
     <div style="font-size:16px;font-weight:600">&#x1F4C8; Analytics</div>
     <div class="qtabs">
-      <button class="qtab ${aq===''?'active':''}" onclick="window._analyticsQ='';window._analyticsM='';renderAnalytics()">All</button>
-      ${QS.map(q2=>`<button class="qtab ${q2===aq?'active':''}" onclick="window._analyticsQ='${q2}';window._analyticsM='';renderAnalytics()">${q2}</button>`).join('')}
+      <button class="qtab ${aq===''?'active':''}" onclick="window._analyticsQ='';window._analyticsM='';window._analyticsCh=[];window._analyticsMc=[];renderAnalytics()">All</button>
+      ${QS.map(q2=>`<button class="qtab ${q2===aq?'active':''}" onclick="window._analyticsQ='${q2}';window._analyticsM='';window._analyticsCh=[];window._analyticsMc=[];renderAnalytics()">${q2}</button>`).join('')}
     </div>
   </div>`;
 
-  // Filter bar
+  // Filter bar — Channel & Marketing Cat trigger server re-fetch so that the
+  // matrix and charts (built from server aggregates) reflect the filter.
   html+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     ${ddFilter('an_co','Country',anCountries,function(){anApplyFilters()})}
-    ${ddFilter('an_ch','Channel',anChannels,function(){anApplyFilters()})}
-    ${ddFilter('an_mc','Marketing Cat',anMktCats,function(){anApplyFilters()})}
+    ${ddFilter('an_ch','Channel',anChannels,function(){anApplyChannel()})}
+    ${ddFilter('an_mc','Marketing Cat',anMktCats,function(){anApplyMktCat()})}
     ${ddFilter('an_mo','Month',anMonthLabels,function(){anApplyMonth()})}
     ${campaignToggleHtml('an')}
-    <button class="btn btn-g btn-xs" onclick="ddClearAll();window._analyticsM='';renderAnalytics()">Clear Filters</button>
+    <button class="btn btn-g btn-xs" onclick="ddClearAll();window._analyticsM='';window._analyticsCh=[];window._analyticsMc=[];renderAnalytics()">Clear Filters</button>
     <span id="an-f-info" style="font-size:10px;color:var(--t3)"></span>
   </div>`;
 
@@ -771,6 +783,7 @@ function buildAnalyticsPage(data){
   g('page').innerHTML = html;
   setTimeout(()=>anBuildCharts(data),100);
   anRestoreMonthSelection();
+  anRestoreFilterSelection();
 }
 
 function anBuildCharts(data, filterCo, filterCh, filterMc){
@@ -834,9 +847,9 @@ function anBuildCharts(data, filterCo, filterCh, filterMc){
 }
 
 // Month filter triggers a server refetch with ?month=YYYY-MM[,YYYY-MM,...]
-// The other filters (Country/Channel/Marketing Cat) work client-side on the
-// fetched aggregates, but Month requires hitting the backend because the
-// /api/analytics endpoint only ships per-quarter aggregates by default.
+// Country still filters client-side (cheap, only affects stats/tables).
+// Channel and Marketing Cat trigger a server refetch so the matrix and
+// charts (built from server aggregates) reflect the filter.
 function anApplyMonth(){
   const labels = ddGetValues('an_mo_dd');
   const labelToKey = {};
@@ -844,6 +857,30 @@ function anApplyMonth(){
   const keys = labels.map(function(l){ return labelToKey[l]; }).filter(Boolean);
   window._analyticsM = keys.join(',');
   renderAnalytics();
+}
+function anApplyChannel(){
+  window._analyticsCh = ddGetValues('an_ch_dd');
+  renderAnalytics();
+}
+function anApplyMktCat(){
+  window._analyticsMc = ddGetValues('an_mc_dd');
+  renderAnalytics();
+}
+// Re-check Channel/Mc dropdown items after a refetch so the dropdown reflects
+// current state. Same shape as anRestoreMonthSelection — do NOT call ddChange.
+function anRestoreFilterSelection(){
+  function restore(ddId, selected){
+    if(!selected || !selected.length) return;
+    const want = new Set(selected);
+    let count = 0;
+    document.querySelectorAll('#'+ddId+'_p input').forEach(function(cb){
+      if(want.has(cb.value)){ cb.checked = true; count++; }
+    });
+    const badge = g(ddId+'_c');
+    if(badge){ badge.textContent = count; badge.style.display = count>0?'inline-block':'none'; }
+  }
+  restore('an_ch_dd', window._analyticsCh || []);
+  restore('an_mc_dd', window._analyticsMc || []);
 }
 
 // Re-check Month checkboxes after a refetch so the dropdown reflects current state.

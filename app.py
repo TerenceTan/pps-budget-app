@@ -818,6 +818,7 @@ def api_admin_pm_reclassify():
 def api_analytics():
     try:
         qf=request.args.get("quarter",""); cf=request.args.get("country",""); mf=request.args.get("month","")
+        chf=request.args.get("channel",""); mcf=request.args.get("marketing_cat","")
         if USE_POSTGRES:
             ae=pgdb.get_all(TAB_ENTRIES); ab=pgdb.get_all(TAB_BUDGETS); ac=pgdb.get_all(TAB_CHANNELS)
         else:
@@ -827,6 +828,19 @@ def api_analytics():
         if mf:
             months = {m.strip() for m in mf.split(",") if m.strip()}
             ae = [e for e in ae if str(e.get("month","")) in months]
+        # Snapshot the FULL dimension lists BEFORE applying channel/mc filters
+        # so the frontend dropdowns can still offer every option even when one
+        # filter is already selected. Quarter/country/month filters always apply
+        # to dimensions; channel/marketing_cat do not.
+        all_channels = sorted({str(e.get("channel_name","")) for e in ae if str(e.get("channel_name","")).strip()})
+        all_mktcats  = sorted({str(e.get("marketing_cat","")) for e in ae if str(e.get("marketing_cat","")).strip()})
+        if chf:
+            chs = {c.strip() for c in chf.split(",") if c.strip()}
+            ae = [e for e in ae if str(e.get("channel_name","")) in chs]
+            ac = [c for c in ac if str(c.get("name","")) in chs]
+        if mcf:
+            mcs = {m.strip() for m in mcf.split(",") if m.strip()}
+            ae = [e for e in ae if str(e.get("marketing_cat","")) in mcs]
         # campaign_type reinterprets each entry's `actual` instead of filtering rows.
         # Only applies to entries, never to channel budgets, so totals stay comparable
         # to the configured budget.
@@ -964,7 +978,7 @@ def api_analytics():
         for co in MC: cb=ctb.get(co,0); cp=sum(pbch[cn].get(co,0) for cn in achs); ca=sum(abch[cn].get(co,0) for cn in achs); trch[co+"_bud"]=cb; trch[co+"_pln"]=cp; trch[co+"_act"]=ca; gb2+=cb; gp2+=cp; ga2+=ca
         trch["total_bud"]=gb2; trch["total_pln"]=gp2; trch["total_act"]=ga2; mxch.append(trch)
 
-        return jsonify({"summary":{"total_budget":tb,"total_planned":tp,"total_confirmed":tc,"total_actual":ta,"total_entries":len(ae),"variance":ta-tp,"budget_utilization":(ta/tb*100) if tb>0 else 0},"by_country":[{"country":k,**v} for k,v in sorted(bc.items())],"by_channel":[{"channel":k,**v} for k,v in sorted(bch.items(),key=lambda x:-x[1]["actual"])],"by_month":[{"month":k,**v} for k,v in sorted(bm.items())],"by_marketing_cat":[{"category":k,**v} for k,v in sorted(bmc.items(),key=lambda x:-x[1]["actual"])],"top_variances":var[:20],"completion":{"total":len(ae),"with_actual":wa,"with_jira":wj,"approved":ap},"budget_matrix":mx,"budget_matrix_ch":mxch,"matrix_countries":MC})
+        return jsonify({"summary":{"total_budget":tb,"total_planned":tp,"total_confirmed":tc,"total_actual":ta,"total_entries":len(ae),"variance":ta-tp,"budget_utilization":(ta/tb*100) if tb>0 else 0},"by_country":[{"country":k,**v} for k,v in sorted(bc.items())],"by_channel":[{"channel":k,**v} for k,v in sorted(bch.items(),key=lambda x:-x[1]["actual"])],"by_month":[{"month":k,**v} for k,v in sorted(bm.items())],"by_marketing_cat":[{"category":k,**v} for k,v in sorted(bmc.items(),key=lambda x:-x[1]["actual"])],"top_variances":var[:20],"completion":{"total":len(ae),"with_actual":wa,"with_jira":wj,"approved":ap},"budget_matrix":mx,"budget_matrix_ch":mxch,"matrix_countries":MC,"available_channels":all_channels,"available_marketing_cats":all_mktcats})
     except Exception as e:
         import traceback; traceback.print_exc(); return jsonify({"error":str(e)}),500
 
