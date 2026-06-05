@@ -166,6 +166,8 @@ PM_CHANNEL_MAP = {
     'BiliBili': {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'BiliBili','bu':'Marketing : Paid Social / YouTube - 613000004XXX','finance_cat':'Paid Social-Meta',    'marketing_cat':'Performance Marketing'},
     # PM cluster → Performance Marketing / "<ChannelGroup>" activity
     'Bing':             {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'Bing',            'bu':'Marketing : Programmatic - 613000009XXX','finance_cat':'Bing',        'marketing_cat':'Performance Marketing'},
+    'YouTube':          {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'YouTube',         'bu':'Marketing : Paid Social / YouTube - 613000004XXX','finance_cat':'Paid Social-Youtube','marketing_cat':'Performance Marketing'},
+    'Google':           {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'Google',          'bu':'Marketing : Programmatic - 613000009XXX','finance_cat':'PPC',         'marketing_cat':'Performance Marketing'},
     'AdRoll':           {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'AdRoll',          'bu':'Marketing : Programmatic - 613000009XXX','finance_cat':'Programmatic','marketing_cat':'Performance Marketing'},
     'Apple Search Ads': {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'Apple Search Ads','bu':'Marketing : Programmatic - 613000009XXX','finance_cat':'PPC',         'marketing_cat':'Performance Marketing'},
     'TradingView':      {'channel_name':PM_UMBRELLA_CHANNEL,'activity_name':'TradingView',     'bu':'Marketing : Programmatic - 613000009XXX','finance_cat':'PPC',         'marketing_cat':'Performance Marketing'},
@@ -202,6 +204,8 @@ CHANNEL_GROUP_PREFIXES = [
     'Others',
     'Meta',
     'Bing',
+    'YouTube',
+    'Google',
 ]
 
 # Exact-word aliases (case-insensitive) for common variants in uploaded files
@@ -220,6 +224,8 @@ CHANNEL_GROUP_ALIAS_MAP = {
     'TA MEDIA':'TA Media', 'TAMEDIA':'TA Media',
     'BING':'Bing', 'MICROSOFT ADS':'Bing', 'MICROSOFT':'Bing',
     'META':'Meta',
+    'YOUTUBE':'YouTube', 'YT':'YouTube', 'YOU TUBE':'YouTube',
+    'GOOGLE':'Google', 'GOOGLE ADS':'Google', 'GOOG':'Google',
 }
 
 # Country code aliases for uploaded files

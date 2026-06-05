@@ -358,13 +358,48 @@ def auto_sync():
         skip_reasons = []
         _write_count = 0
 
-        for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["month_key"])):
+        # ── Defensive re-aggregation by mapped activity ────────────────────
+        # BQ aggregates by Channel_Group. Multiple channel_groups can collapse
+        # to the SAME activity here — e.g. anything not in PM_CHANNEL_MAP
+        # falls to PM_DEFAULT_MAPPING (activity="Others"). Without summing
+        # those together, the sync loop below would write each agg row
+        # separately and overwrite the activity row each time (last writer
+        # wins). Pre-aggregating ensures one row per (country, mapped_channel,
+        # mapped_activity, month) carrying the sum across all source
+        # channel_groups, so a single UPDATE/INSERT covers them all.
+        merged_agg = {}
+        for r in agg_rows:
+            cg = r["channel_group"]
+            mp = PM_CHANNEL_MAP.get(cg, PM_DEFAULT_MAPPING)
+            k = (r["country"], mp["channel_name"], mp["activity_name"], r["month_key"], r["quarter"])
+            if k not in merged_agg:
+                merged_agg[k] = {
+                    "country": r["country"],
+                    "channel_group": cg,                 # first-seen, used in description fallback
+                    "month_key": r["month_key"],
+                    "quarter": r["quarter"],
+                    "mapped_channel": mp["channel_name"],
+                    "mapped_activity": mp["activity_name"],
+                    "mapped_bu": mp["bu"],
+                    "mapped_finance_cat": mp["finance_cat"],
+                    "mapped_marketing_cat": mp["marketing_cat"],
+                    "spend": 0.0,
+                    "spend_buc": 0.0,
+                    "_sources": [],
+                }
+            merged_agg[k]["spend"]     += float(r.get("spend") or 0)
+            merged_agg[k]["spend_buc"] += float(r.get("spend_buc") or 0)
+            if cg and cg not in merged_agg[k]["_sources"]:
+                merged_agg[k]["_sources"].append(cg)
+
+        for r in sorted(merged_agg.values(),
+                        key=lambda x: (x["country"], x["mapped_activity"], x["month_key"])):
             country = r["country"]
             channel_group = r["channel_group"]
             month_key = r["month_key"]
             quarter = r["quarter"]
             spend = round(r["spend"], 2)
-            spend_buc = round(r.get("spend_buc", 0), 2)
+            spend_buc = round(r["spend_buc"], 2)
 
             if country not in valid_countries:
                 skipped += 1
@@ -372,12 +407,15 @@ def auto_sync():
             # Note: we still process spend == 0 cells when an existing row needs to
             # be zeroed (e.g. BQ reclassified all activity to a different channel).
 
-            mapping = PM_CHANNEL_MAP.get(channel_group, PM_DEFAULT_MAPPING)
-            mapped_channel = mapping["channel_name"]
-            mapped_activity = mapping["activity_name"]
-            mapped_bu = mapping["bu"]
-            mapped_finance_cat = mapping["finance_cat"]
-            mapped_marketing_cat = mapping["marketing_cat"]
+            # Pre-merged row carries the mapped values from when we collapsed
+            # multiple BQ channel_groups onto one activity. Trust those rather
+            # than re-resolving from the (possibly arbitrary) `channel_group`.
+            mapped_channel = r["mapped_channel"]
+            mapped_activity = r["mapped_activity"]
+            mapped_bu = r["mapped_bu"]
+            mapped_finance_cat = r["mapped_finance_cat"]
+            mapped_marketing_cat = r["mapped_marketing_cat"]
+            sources = r.get("_sources") or [channel_group]
 
             # HARD RULE: never create channels
             ch = _find_channel(existing_channels, country, quarter, mapped_channel)
@@ -436,7 +474,7 @@ def auto_sync():
                         mapped_bu,
                         mapped_finance_cat,
                         mapped_marketing_cat,
-                        f"{channel_group}: ${spend:,.0f} AUD" + (f" (BUC ${spend_buc:,.0f})" if spend_buc > 0 else ""),
+                        f"{'+'.join(sources)}: ${spend:,.0f} AUD" + (f" (BUC ${spend_buc:,.0f})" if spend_buc > 0 else ""),
                         float(e.get("planned") or 0),          # preserve existing planned (non-zero on adopted pln_ rows)
                         float(e.get("confirmed") or 0),
                         spend,                                 # actual — total
