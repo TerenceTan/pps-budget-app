@@ -54,12 +54,16 @@ def _get_bq_client():
 #   - 'uplift'        → catches Meta "*-Brand-Uplift-*" naming
 #   - 'BUC'           → catches "YOUTUBE_BUC_*", "BUC | ...", "*-BUC-Campaign-*"
 #   - 'Brand Lift'    → catches YouTube "Brand Lift Campaign" naming
-#   - 'Brand-Campaign'→ catches Meta SCB "*-Brand-Campaign-*" naming
+#
+# REMOVED 2026-06-05: 'Brand-Campaign'. It uniquely matched only TW Meta
+# sponsorship-themed campaigns (AMF1 race, 'Award', 'Whentradersburnsout',
+# 'lance helmet') which the team confirmed are BAU, not BUC. Real BUC Meta
+# campaigns still get caught by 'BUC' (in the adset name) or 'uplift'.
+# Aligns DB totals with Looker Studio's BUC filter.
 BUC_SQL_PREDICATE = (
     "(LOWER(Campaign) LIKE '%uplift%' "
     "OR STRPOS(Campaign, 'BUC') > 0 "
-    "OR LOWER(Campaign) LIKE '%brand lift%' "
-    "OR LOWER(Campaign) LIKE '%brand-campaign%')"
+    "OR LOWER(Campaign) LIKE '%brand lift%')"
 )
 
 
