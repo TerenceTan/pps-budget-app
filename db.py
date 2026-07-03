@@ -65,7 +65,7 @@ TAB_TO_TABLE = {
     "Entries":        "entries",
     "ChannelMapping": "channel_mapping",
     "Vendors":        "vendors",
-    "Users":          "users",
+    "Users":          "budget_users",
     "Categories":     "categories",
 }
 
@@ -100,9 +100,9 @@ def get_filtered(tab, **filters):
 def upsert_budget(id, country, quarter, total_budget, updated_at):
     with get_cursor() as cur:
         cur.execute("""
-            INSERT INTO budgets (id, country, quarter, total_budget, updated_at)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (country, quarter) DO UPDATE
+            INSERT INTO budgets (id, country, quarter, fiscal_year, total_budget, updated_at)
+            VALUES (%s, %s, %s, 'FY26', %s, %s)
+            ON CONFLICT (country, quarter, fiscal_year) DO UPDATE
             SET total_budget = EXCLUDED.total_budget, updated_at = EXCLUDED.updated_at
         """, (id, country, quarter, total_budget, updated_at))
 
@@ -293,28 +293,32 @@ def delete_vendor(id):
         cur.execute("DELETE FROM vendors WHERE id = %s", (id,))
 
 # ── USERS ─────────────────────────────────────────────────────
+# NOTE: this app now shares the portal's Postgres, whose own `users` table is
+# portal auth (a different schema). The tracker's login table lives in
+# `budget_users` there — see the shared-DB cutover. Keep every users query
+# below pointed at `budget_users`.
 
 def insert_user(username, password_hash, display_name, role, markets, created_at):
     with get_cursor() as cur:
         cur.execute("""
-            INSERT INTO users (username, password_hash, display_name, role, markets, created_at)
+            INSERT INTO budget_users (username, password_hash, display_name, role, markets, created_at)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (username, password_hash, display_name, role, markets, created_at))
 
 def update_user(username, password_hash, display_name, role, markets, created_at):
     with get_cursor() as cur:
         cur.execute("""
-            UPDATE users SET password_hash=%s, display_name=%s, role=%s, markets=%s, created_at=%s
+            UPDATE budget_users SET password_hash=%s, display_name=%s, role=%s, markets=%s, created_at=%s
             WHERE username=%s
         """, (password_hash, display_name, role, markets, created_at, username))
 
 def delete_user(username):
     with get_cursor() as cur:
-        cur.execute("DELETE FROM users WHERE username = %s", (username,))
+        cur.execute("DELETE FROM budget_users WHERE username = %s", (username,))
 
 def get_user(username):
     with get_cursor() as cur:
-        cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+        cur.execute("SELECT * FROM budget_users WHERE LOWER(username) = LOWER(%s)", (username,))
         row = cur.fetchone()
     return dict(row) if row else None
 
