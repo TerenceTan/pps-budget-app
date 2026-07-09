@@ -36,6 +36,11 @@ if USE_POSTGRES:
 bp = Blueprint('pm', __name__)
 
 
+def _active_fy():
+    """Fiscal year the current session is working in (mirrors app._active_fy)."""
+    return normalise_fy(session.get("fiscal_year"), CURRENT_FY)
+
+
 def _get_bq_client():
     raw = os.environ.get("GOOGLE_CREDS_JSON", "")
     if raw:
@@ -67,10 +72,13 @@ BUC_SQL_PREDICATE = (
 )
 
 
-def _bq_fetch_pm_data(q_filter=None):
+def _bq_fetch_pm_data(q_filter=None, fy_filter=None):
     """Query BigQuery. Returns (agg_rows, total_raw_rows).
     One agg_row per (country, channel_group, month). Total spend goes into
-    `spend`; the BUC portion of that spend goes into `spend_buc`."""
+    `spend`; the BUC portion of that spend goes into `spend_buc`.
+    fy_filter (e.g. 'FY27') restricts to spend months in that fiscal year — used
+    by the preview so it shows only the FY being viewed. The write paths pass no
+    fy_filter: they process every month and route each to its own FY on write."""
     client = _get_bq_client()
     table_ref = f"`{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_TABLE}`"
     apac_countries = "','".join(PM_COUNTRY_MAP.keys())
@@ -105,6 +113,8 @@ def _bq_fetch_pm_data(q_filter=None):
         if not quarter or not month_key:
             continue
         if q_filter and quarter != q_filter:
+            continue
+        if fy_filter and fy_for_month(month_key) != fy_filter:
             continue
         raw_cg = str(row.Channel_Group or '').strip()
         cg_norm = normalise_channel_group(raw_cg)
@@ -141,7 +151,8 @@ def preview():
         return jsonify({"error":"Admin or editor required"}), 403
     try:
         q_filter = request.args.get("quarter", "")
-        agg_rows, total_raw_rows = _bq_fetch_pm_data(q_filter or None)
+        fy = _active_fy()
+        agg_rows, total_raw_rows = _bq_fetch_pm_data(q_filter or None, fy_filter=fy)
         preview_rows = []
         for r in sorted(agg_rows, key=lambda x: (x["country"], x["channel_group"], x["month_key"])):
             mapping = PM_CHANNEL_MAP.get(r["channel_group"], PM_DEFAULT_MAPPING)
@@ -167,7 +178,8 @@ def preview():
             "total_spend": round(sum(r["spend"] for r in agg_rows), 2),
             "preview": preview_rows,
             "debug": {"source":"BigQuery","project":BQ_PROJECT_ID,
-                      "table":f"{BQ_DATASET}.{BQ_TABLE}","quarter_filter":q_filter},
+                      "table":f"{BQ_DATASET}.{BQ_TABLE}","quarter_filter":q_filter,
+                      "fiscal_year":fy},
         })
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -571,6 +583,10 @@ def readiness():
             channels = pgdb.get_all(TAB_CHANNELS)
         else:
             channels = get_records_cached(TAB_CHANNELS)
+        # Scope readiness to the session's active FY: a sync writes into the FY of
+        # each spend month, so an FY26 channel does NOT make FY27 sync-ready.
+        fy = _active_fy()
+        channels = [c for c in channels if str(c.get("fiscal_year") or DEFAULT_FY) == fy]
         markets = [m for m in MARKETS if m != ADMIN_MARKET]
         required = [PM_UMBRELLA_CHANNEL, AFFILIATE_CHANNEL]
         missing = []
@@ -585,6 +601,6 @@ def readiness():
                     )
                     if not has:
                         missing.append({"country":mkt, "quarter":q, "channel":req})
-        return jsonify({"ok":True, "missing":missing, "markets_checked":markets})
+        return jsonify({"ok":True, "missing":missing, "markets_checked":markets, "fiscal_year":fy})
     except Exception as e:
         return jsonify({"error":str(e)}), 500
