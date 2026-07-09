@@ -28,7 +28,7 @@ BQ_DATASET = os.environ.get("BQ_DATASET", "pepperstone_apac")
 BQ_TABLE = os.environ.get("BQ_TABLE", "ad_performance")
 BQ_LOCATION = os.environ.get("BQ_LOCATION", "asia-southeast1")
 
-MARKETS = ["CN","HK","ID","IN","MN","MY","PH","SG","TH","TW","VN","APAC"]
+MARKETS = ["CN","HK","ID","IN","KH","MN","MY","PH","PK","SG","TH","TW","VN","APAC"]
 QUARTERS = ["Q1","Q2","Q3","Q4"]
 
 # Tab names
@@ -140,6 +140,11 @@ DEFAULT_MKT_CATS = [
     "Influencer / KOL",
     "Partner Marketing Support",
     "Consultant Fee",
+    # FY27 planning buckets (New Annual Planning) — CSV is the authority for these
+    "Premium Customer Experience",
+    "Branding",
+    "AI & Content",
+    "Local Direct Deal",
     "Other",
 ]
 
@@ -241,6 +246,8 @@ COUNTRY_ALIAS_MAP = {
     'MONGOLIA':'MN',
     'MALAYSIA':'MY',
     'CHINA':'CN', 'PRC':'CN', 'MAINLAND CHINA':'CN',
+    'CAMBODIA':'KH', 'KHM':'KH',
+    'PAKISTAN':'PK', 'PAK':'PK',
 }
 
 
