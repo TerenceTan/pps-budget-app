@@ -12,6 +12,11 @@ from config import fy_for_month, DEFAULT_FY
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+# Login table name. The current standalone RDS uses `users`. When/if the app
+# cuts over to the shared portal Postgres (whose own `users` is portal auth),
+# set BUDGET_USERS_TABLE=budget_users. Default matches the live database.
+USERS_TABLE = os.environ.get("BUDGET_USERS_TABLE", "users")
+
 _pool = None
 
 def get_connection():
@@ -95,7 +100,7 @@ TAB_TO_TABLE = {
     "Entries":        "entries",
     "ChannelMapping": "channel_mapping",
     "Vendors":        "vendors",
-    "Users":          "budget_users",
+    "Users":          USERS_TABLE,
     "Categories":     "categories",
 }
 
@@ -351,32 +356,31 @@ def delete_vendor(id):
         cur.execute("DELETE FROM vendors WHERE id = %s", (id,))
 
 # ── USERS ─────────────────────────────────────────────────────
-# NOTE: this app now shares the portal's Postgres, whose own `users` table is
-# portal auth (a different schema). The tracker's login table lives in
-# `budget_users` there — see the shared-DB cutover. Keep every users query
-# below pointed at `budget_users`.
+# Login table is `USERS_TABLE` (env BUDGET_USERS_TABLE, default `users` to
+# match the live standalone RDS). Set it to `budget_users` at the shared-portal
+# Postgres cutover, when the tracker's login rows live alongside portal auth.
 
 def insert_user(username, password_hash, display_name, role, markets, created_at):
     with get_cursor() as cur:
-        cur.execute("""
-            INSERT INTO budget_users (username, password_hash, display_name, role, markets, created_at)
+        cur.execute(f"""
+            INSERT INTO {USERS_TABLE} (username, password_hash, display_name, role, markets, created_at)
             VALUES (%s, %s, %s, %s, %s, %s)
         """, (username, password_hash, display_name, role, markets, created_at))
 
 def update_user(username, password_hash, display_name, role, markets, created_at):
     with get_cursor() as cur:
-        cur.execute("""
-            UPDATE budget_users SET password_hash=%s, display_name=%s, role=%s, markets=%s, created_at=%s
+        cur.execute(f"""
+            UPDATE {USERS_TABLE} SET password_hash=%s, display_name=%s, role=%s, markets=%s, created_at=%s
             WHERE username=%s
         """, (password_hash, display_name, role, markets, created_at, username))
 
 def delete_user(username):
     with get_cursor() as cur:
-        cur.execute("DELETE FROM budget_users WHERE username = %s", (username,))
+        cur.execute(f"DELETE FROM {USERS_TABLE} WHERE username = %s", (username,))
 
 def get_user(username):
     with get_cursor() as cur:
-        cur.execute("SELECT * FROM budget_users WHERE LOWER(username) = LOWER(%s)", (username,))
+        cur.execute(f"SELECT * FROM {USERS_TABLE} WHERE LOWER(username) = LOWER(%s)", (username,))
         row = cur.fetchone()
     return dict(row) if row else None
 
