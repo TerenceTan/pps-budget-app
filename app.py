@@ -903,7 +903,11 @@ def api_analytics():
         var=[{"id":e["id"],"country":e["country"],"channel":e.get("channel_name",""),"description":e.get("description","") or e.get("activity_name",""),"planned":float(e.get("planned") or 0),"actual":float(e.get("actual") or 0),"variance":float(e.get("actual") or 0)-float(e.get("planned") or 0),"variance_pct":((float(e.get("actual") or 0)-float(e.get("planned") or 0))/float(e["planned"])*100) if float(e.get("planned") or 0)>0 else 0} for e in ae if float(e.get("planned") or 0)>0 or float(e.get("actual") or 0)>0]
         var.sort(key=lambda x:abs(x["variance"]),reverse=True)
         wa=sum(1 for e in ae if float(e.get("actual") or 0)>0); wj=sum(1 for e in ae if e.get("jira")); ap=sum(1 for e in ae if str(e.get("approved","")).lower()=="true")
-        MC=["HK","CN","TW","TH","VN","SG","MY","MN","IN","APAC","ID","PH"]
+        # Matrix country columns: keep the curated display order for known markets,
+        # then append any others in MARKETS (e.g. KH, PK) so new markets are never
+        # silently dropped from the matrix totals.
+        _MC_ORDER=["HK","CN","TW","TH","VN","SG","MY","MN","IN","APAC","ID","PH"]
+        MC=[m for m in _MC_ORDER if m in MARKETS]+[m for m in MARKETS if m not in _MC_ORDER]
         # Build channel_id -> list of (marketing_cat, weight) pairs based on entries.
         # This splits a channel's budget proportionally across the mcs its entries fall into.
         # Weight source priority per channel: actual > planned > entry_count.
