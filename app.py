@@ -68,7 +68,22 @@ def index():
         return render_template("login.html", users=[{"username":u.get("username",""),"display_name":u.get("display_name",u.get("username",""))} for u in users], markets=MARKETS)
     role = session.get("role","country"); um = session.get("markets","")
     vm = [m.strip() for m in um.split(",")] if role=="country" and um!="ALL" else MARKETS
-    return render_template("app.html", user=session.get("display_name",session["username"]), username=session["username"], is_admin=role=="admin", is_editor=role=="editor", role=role, markets=vm, quarters=QUARTERS)
+    return render_template("app.html", user=session.get("display_name",session["username"]), username=session["username"], is_admin=role=="admin", is_editor=role=="editor", role=role, markets=vm, quarters=QUARTERS, current_fy=_active_fy(), active_fys=ACTIVE_FYS)
+
+
+def _active_fy():
+    """Fiscal year the current session is working in. Defaults to CURRENT_FY and
+    is always coerced to a valid ACTIVE_FYS label."""
+    return normalise_fy(session.get("fiscal_year"), CURRENT_FY)
+
+
+@app.route("/api/fy", methods=["POST"])
+@require_login
+def api_set_fy():
+    """Switch the session's active fiscal year (drives every scoped read/write)."""
+    fy = normalise_fy((request.get_json(silent=True) or {}).get("fiscal_year"))
+    session["fiscal_year"] = fy
+    return jsonify({"ok": True, "fiscal_year": fy})
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -142,10 +157,11 @@ def api_delete_category(cat_id):
 def api_get_budget(country, quarter):
     if not check_country_access(country): return jsonify({"error":"Forbidden"}),403
     try:
+        fy=_active_fy()
         if USE_POSTGRES:
-            brows=pgdb.get_filtered(TAB_BUDGETS,country=country,quarter=quarter)
-            chrows=pgdb.get_filtered(TAB_CHANNELS,country=country,quarter=quarter)
-            aa=pgdb.get_filtered(TAB_ACTIVITIES,country=country,quarter=quarter)
+            brows=pgdb.get_filtered(TAB_BUDGETS,country=country,quarter=quarter,fiscal_year=fy)
+            chrows=pgdb.get_filtered(TAB_CHANNELS,country=country,quarter=quarter,fiscal_year=fy)
+            aa=pgdb.get_filtered(TAB_ACTIVITIES,country=country,quarter=quarter,fiscal_year=fy)
             mr=pgdb.get_all(TAB_MAPPING)
         else:
             brows=rows_for_cached(TAB_BUDGETS,country=country,quarter=quarter)
@@ -171,7 +187,7 @@ def api_get_budget(country, quarter):
 def api_save_budget(country, quarter):
     total=float(request.get_json().get("total",0)); now=datetime.utcnow().isoformat()
     if USE_POSTGRES:
-        bid=str(uuid.uuid4())[:8]; pgdb.upsert_budget(bid,country,quarter,total,now)
+        bid=str(uuid.uuid4())[:8]; pgdb.upsert_budget(bid,country,quarter,total,now,fiscal_year=_active_fy())
     else:
         ws=get_sheet(TAB_BUDGETS); rows=safe_get_records(ws,TAB_BUDGETS)
         idx=next((i for i,r in enumerate(rows) if r["country"]==country and r["quarter"]==quarter),None)
@@ -195,14 +211,15 @@ def api_add_channel():
     if err: return err
     d=request.get_json(); cid="ch_"+str(uuid.uuid4())[:8]
     if USE_POSTGRES:
-        ex=pgdb.get_filtered(TAB_CHANNELS,country=d["country"],quarter=d["quarter"])
+        fy=_active_fy()
+        ex=pgdb.get_filtered(TAB_CHANNELS,country=d["country"],quarter=d["quarter"],fiscal_year=fy)
         existing = next((c for c in ex if str(c.get("name","")).strip().lower() == str(d["name"]).strip().lower()), None)
         if existing:
             return jsonify({"id":str(existing["id"]),"name":str(existing["name"]),
                             "budget":float(existing.get("budget") or 0),
                             "sort_order":int(existing.get("sort_order") or 0),
                             "duplicate":True})
-        pgdb.insert_channel(cid,d["country"],d["quarter"],d["name"],float(d.get("budget",0)),len(ex),datetime.utcnow().isoformat())
+        pgdb.insert_channel(cid,d["country"],d["quarter"],d["name"],float(d.get("budget",0)),len(ex),datetime.utcnow().isoformat(),fiscal_year=fy)
     else:
         ex=rows_for(TAB_CHANNELS,country=d["country"],quarter=d["quarter"])
         existing = next((c for c in ex if str(c.get("name","")).strip().lower() == str(d["name"]).strip().lower()), None)
@@ -257,7 +274,7 @@ def api_add_activity():
             return jsonify({"id":str(existing["id"]),"name":str(existing["name"]),
                             "sort_order":int(existing.get("sort_order") or 0),
                             "duplicate":True})
-        pgdb.insert_activity(aid,d["channel_id"],d["country"],d["quarter"],d["name"],len(ex),datetime.utcnow().isoformat())
+        pgdb.insert_activity(aid,d["channel_id"],d["country"],d["quarter"],d["name"],len(ex),datetime.utcnow().isoformat(),fiscal_year=_active_fy())
     else:
         ex=rows_for(TAB_ACTIVITIES,channel_id=d["channel_id"])
         existing = next((a for a in ex if str(a.get("name","")).strip().lower() == str(d["name"]).strip().lower()), None)
@@ -301,7 +318,7 @@ def api_delete_activity(act_id):
 def api_get_entries(country, quarter):
     if not check_country_access(country): return jsonify({"error":"Forbidden"}),403
     try:
-        rows = pgdb.get_filtered(TAB_ENTRIES,country=country,quarter=quarter) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=country,quarter=quarter)
+        rows = pgdb.get_filtered(TAB_ENTRIES,country=country,quarter=quarter,fiscal_year=_active_fy()) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=country,quarter=quarter)
         # campaign_type reinterprets `actual` instead of filtering rows:
         #   all (default) → actual = total (BAU + BUC)
         #   bau           → actual = total − actual_buc; drop rows that become empty
@@ -471,23 +488,25 @@ def api_reconciliation(quarter):
     try:
         role=session.get("role",""); um=session.get("markets","")
         allowed=None if role in ("admin","editor") or um=="ALL" else set(m.strip() for m in um.split(",") if m.strip())
+        fy=_active_fy()
+        _in_fy=lambda r: str(r.get("fiscal_year") or DEFAULT_FY)==fy   # legacy rows default to FY26
         if USE_POSTGRES:
             ab=pgdb.get_all(TAB_BUDGETS); ach=pgdb.get_all(TAB_CHANNELS); aact=pgdb.get_all(TAB_ACTIVITIES)
-            qe=pgdb.get_filtered(TAB_ENTRIES,quarter=quarter)
+            qe=pgdb.get_filtered(TAB_ENTRIES,quarter=quarter,fiscal_year=fy)
         else:
             ab=get_records_cached(TAB_BUDGETS); ach=get_records_cached(TAB_CHANNELS); aact=get_records_cached(TAB_ACTIVITIES)
             qe=rows_for_cached(TAB_ENTRIES,quarter=quarter)
-        qb=[b for b in ab if str(b.get("quarter",""))==quarter]
+        qb=[b for b in ab if str(b.get("quarter",""))==quarter and _in_fy(b)]
         mkts=sorted({str(b["country"]) for b in qb}|{str(e["country"]) for e in qe})
         if allowed: mkts=[m for m in mkts if m in allowed]
         result=[]
         for mkt in mkts:
             br=next((b for b in qb if str(b["country"])==mkt),None); pb=float(br["total_budget"]) if br else 0
-            mc=[c for c in ach if str(c.get("country",""))==mkt and str(c.get("quarter",""))==quarter]
-            me=(pgdb.get_filtered(TAB_ENTRIES,country=mkt,quarter=quarter) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=mkt,quarter=quarter)); cd=[]; asgn=set()
+            mc=[c for c in ach if str(c.get("country",""))==mkt and str(c.get("quarter",""))==quarter and _in_fy(c)]
+            me=(pgdb.get_filtered(TAB_ENTRIES,country=mkt,quarter=quarter,fiscal_year=fy) if USE_POSTGRES else rows_for_cached(TAB_ENTRIES,country=mkt,quarter=quarter)); cd=[]; asgn=set()
             for ch in sorted(mc,key=lambda c:int(c.get("sort_order") or 0)):
                 cid=str(ch["id"]); ce=[e for e in me if str(e.get("channel_id",""))==cid]
-                ca=[a for a in aact if str(a.get("channel_id",""))==cid and str(a.get("country",""))==mkt and str(a.get("quarter",""))==quarter]
+                ca=[a for a in aact if str(a.get("channel_id",""))==cid and str(a.get("country",""))==mkt and str(a.get("quarter",""))==quarter and _in_fy(a)]
                 ad=[]; aids=set()
                 for act in sorted(ca,key=lambda a:int(a.get("sort_order") or 0)):
                     ae=[e for e in ce if str(e.get("activity_id",""))==str(act["id"])]; items=[]
@@ -823,6 +842,10 @@ def api_analytics():
             ae=pgdb.get_all(TAB_ENTRIES); ab=pgdb.get_all(TAB_BUDGETS); ac=pgdb.get_all(TAB_CHANNELS)
         else:
             ae=get_records_cached(TAB_ENTRIES); ab=get_records_cached(TAB_BUDGETS); ac=get_records_cached(TAB_CHANNELS)
+        # Scope every analytics figure to the session's active fiscal year
+        # (legacy rows with no fiscal_year default to FY26).
+        fy=_active_fy(); _in_fy=lambda r: str(r.get("fiscal_year") or DEFAULT_FY)==fy
+        ae=[e for e in ae if _in_fy(e)]; ab=[b for b in ab if _in_fy(b)]; ac=[c for c in ac if _in_fy(c)]
         if qf: ae=[e for e in ae if str(e.get("quarter",""))==qf]; ab=[b for b in ab if str(b.get("quarter",""))==qf]; ac=[c for c in ac if str(c.get("quarter",""))==qf]
         if cf: ae=[e for e in ae if str(e.get("country",""))==cf]; ab=[b for b in ab if str(b.get("country",""))==cf]; ac=[c for c in ac if str(c.get("country",""))==cf]
         if mf:
@@ -986,31 +1009,34 @@ def api_analytics():
 @app.route("/api/export")
 @require_login
 def api_export():
-    u=session["user"]
+    u=session["user"]; fy=_active_fy()
     rows = pgdb.get_all(TAB_ENTRIES) if USE_POSTGRES else safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES)
+    if USE_POSTGRES: rows=[r for r in rows if str(r.get("fiscal_year") or DEFAULT_FY)==fy]
     if u!=ADMIN_MARKET: rows=[r for r in rows if r["country"]==u]
     out=io.StringIO(); w=csv.writer(out)
     w.writerow(["Country","Quarter","Month","Channel","Activity","BU","Finance Category","Marketing Category","Description","Planned","Confirmed","Actual","JIRA","Vendor","Notes","Approved","Entered By","Updated At"])
     for r in rows: w.writerow([r["country"],r["quarter"],r["month"],r["channel_name"],r.get("activity_name",""),r["bu"],r["finance_cat"],r["marketing_cat"],r["description"],r["planned"],r["confirmed"],r["actual"],r["jira"],r["vendor"],r["notes"],"Yes" if str(r["approved"])=="True" else "No",r["entered_by"],r["updated_at"]])
-    return send_file(io.BytesIO(out.getvalue().encode("utf-8-sig")),mimetype="text/csv",as_attachment=True,download_name=f"APAC_Budget_{'ALL' if u==ADMIN_MARKET else u}_{datetime.now().strftime('%Y-%m-%d')}.csv")
+    return send_file(io.BytesIO(out.getvalue().encode("utf-8-sig")),mimetype="text/csv",as_attachment=True,download_name=f"APAC_Budget_{fy}_{'ALL' if u==ADMIN_MARKET else u}_{datetime.now().strftime('%Y-%m-%d')}.csv")
 
 @app.route("/api/export/xlsx")
 @require_login
 def api_export_xlsx():
     from export_xlsx import build_finance_export; import tempfile
-    u=session["user"]
+    u=session["user"]; fy=_active_fy()
     qf=request.args.get("quarter","").strip()
     if USE_POSTGRES:
         ae=pgdb.get_all(TAB_ENTRIES); ac=pgdb.get_all(TAB_CHANNELS); ab=pgdb.get_all(TAB_BUDGETS)
+        _in_fy=lambda r: str(r.get("fiscal_year") or DEFAULT_FY)==fy
+        ae=[e for e in ae if _in_fy(e)]; ac=[c for c in ac if _in_fy(c)]; ab=[b for b in ab if _in_fy(b)]
     else:
         ae=safe_get_records(get_sheet(TAB_ENTRIES),TAB_ENTRIES); ac=safe_get_records(get_sheet(TAB_CHANNELS),TAB_CHANNELS); ab=safe_get_records(get_sheet(TAB_BUDGETS),TAB_BUDGETS)
     if u!=ADMIN_MARKET: ae=[e for e in ae if str(e.get("country",""))==u]; ac=[c for c in ac if str(c.get("country",""))==u]; ab=[b for b in ab if str(b.get("country",""))==u]
     if qf: ae=[e for e in ae if str(e.get("quarter",""))==qf]; ac=[c for c in ac if str(c.get("quarter",""))==qf]; ab=[b for b in ab if str(b.get("quarter",""))==qf]
     tmp=tempfile.NamedTemporaryFile(suffix=".xlsx",delete=False); tmp.close()
-    try: build_finance_export(tmp.name,ae,ac,ab)
+    try: build_finance_export(tmp.name,ae,ac,ab,fiscal_year=fy)
     except Exception as ex: os.unlink(tmp.name); import traceback; traceback.print_exc(); return jsonify({"error":f"Export failed: {ex}"}),500
     qtag=f"_{qf}" if qf else ""
-    resp=send_file(tmp.name,mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",as_attachment=True,download_name=f"APAC_FY26_{'ALL' if u==ADMIN_MARKET else u}{qtag}_{datetime.now().strftime('%Y-%m-%d')}.xlsx")
+    resp=send_file(tmp.name,mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",as_attachment=True,download_name=f"APAC_{fy}_{'ALL' if u==ADMIN_MARKET else u}{qtag}_{datetime.now().strftime('%Y-%m-%d')}.xlsx")
     @resp.call_on_close
     def cleanup():
         try: os.unlink(tmp.name)

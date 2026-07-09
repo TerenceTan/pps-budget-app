@@ -1,43 +1,50 @@
 -- schema.sql — PostgreSQL schema for APAC Marketing Budget Tracker
 -- Run: psql $DATABASE_URL -f schema.sql
 
+-- Pepperstone FY runs Jul→Jun. fiscal_year (e.g. 'FY26') scopes budgets,
+-- channels, activities and entries so the same (country, quarter) can repeat
+-- across fiscal years. Legacy rows created before this column default to 'FY26'.
 CREATE TABLE IF NOT EXISTS budgets (
     id          TEXT PRIMARY KEY,
     country     TEXT NOT NULL,
     quarter     TEXT NOT NULL,
+    fiscal_year TEXT NOT NULL DEFAULT 'FY26',
     total_budget NUMERIC(14,2) DEFAULT 0,
     updated_at  TEXT,
-    UNIQUE(country, quarter)
+    UNIQUE(country, quarter, fiscal_year)
 );
-CREATE INDEX IF NOT EXISTS idx_budgets_cq ON budgets(country, quarter);
+CREATE INDEX IF NOT EXISTS idx_budgets_cqf ON budgets(country, quarter, fiscal_year);
 
 CREATE TABLE IF NOT EXISTS channels (
     id          TEXT PRIMARY KEY,
     country     TEXT NOT NULL,
     quarter     TEXT NOT NULL,
+    fiscal_year TEXT NOT NULL DEFAULT 'FY26',
     name        TEXT NOT NULL,
     budget      NUMERIC(14,2) DEFAULT 0,
     sort_order  INTEGER DEFAULT 0,
     created_at  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_channels_cq ON channels(country, quarter);
+CREATE INDEX IF NOT EXISTS idx_channels_cqf ON channels(country, quarter, fiscal_year);
 
 CREATE TABLE IF NOT EXISTS activities (
     id          TEXT PRIMARY KEY,
     channel_id  TEXT NOT NULL,
     country     TEXT NOT NULL,
     quarter     TEXT NOT NULL,
+    fiscal_year TEXT NOT NULL DEFAULT 'FY26',
     name        TEXT NOT NULL,
     sort_order  INTEGER DEFAULT 0,
     created_at  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_activities_cq ON activities(country, quarter);
+CREATE INDEX IF NOT EXISTS idx_activities_cqf ON activities(country, quarter, fiscal_year);
 CREATE INDEX IF NOT EXISTS idx_activities_ch ON activities(channel_id);
 
 CREATE TABLE IF NOT EXISTS entries (
     id              TEXT PRIMARY KEY,
     country         TEXT NOT NULL,
     quarter         TEXT NOT NULL,
+    fiscal_year     TEXT NOT NULL DEFAULT 'FY26',
     month           TEXT,
     channel_id      TEXT,
     channel_name    TEXT,
@@ -62,7 +69,7 @@ CREATE TABLE IF NOT EXISTS entries (
     is_brand_uplift BOOLEAN DEFAULT FALSE,    -- deprecated; kept for back-compat. New code uses actual_buc.
     actual_buc      NUMERIC(14,2) DEFAULT 0    -- portion of `actual` attributable to Brand Uplift Campaigns
 );
-CREATE INDEX IF NOT EXISTS idx_entries_cq ON entries(country, quarter);
+CREATE INDEX IF NOT EXISTS idx_entries_cqf ON entries(country, quarter, fiscal_year);
 CREATE INDEX IF NOT EXISTS idx_entries_ch ON entries(channel_id);
 
 CREATE TABLE IF NOT EXISTS channel_mapping (

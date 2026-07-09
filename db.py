@@ -8,6 +8,7 @@ import os
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
+from config import fy_for_month, DEFAULT_FY
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
@@ -48,6 +49,35 @@ def ensure_schema():
     statements = [
         "ALTER TABLE entries ADD COLUMN IF NOT EXISTS is_brand_uplift BOOLEAN DEFAULT FALSE",
         "ALTER TABLE entries ADD COLUMN IF NOT EXISTS actual_buc NUMERIC(14,2) DEFAULT 0",
+        # ── Fiscal-year awareness ──────────────────────────────────
+        # Tag every scoping/data table with its FY. Legacy rows default to
+        # 'FY26' (the only FY that existed before this column). Reads filter
+        # by fiscal_year so FY27 Q1 is a distinct bucket from FY26 Q1.
+        "ALTER TABLE budgets    ADD COLUMN IF NOT EXISTS fiscal_year TEXT DEFAULT 'FY26'",
+        "ALTER TABLE channels   ADD COLUMN IF NOT EXISTS fiscal_year TEXT DEFAULT 'FY26'",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS fiscal_year TEXT DEFAULT 'FY26'",
+        "ALTER TABLE entries    ADD COLUMN IF NOT EXISTS fiscal_year TEXT DEFAULT 'FY26'",
+        # budgets used to be UNIQUE(country, quarter). With FY-awareness the
+        # same (country, quarter) legitimately repeats across fiscal years, so
+        # drop the old 2-column unique and key on (country, quarter, fiscal_year).
+        # This DO block finds the old 2-col unique constraint by shape, so it
+        # works regardless of its auto-generated name.
+        """
+        DO $$
+        DECLARE c text;
+        BEGIN
+            SELECT conname INTO c FROM pg_constraint
+             WHERE conrelid = 'budgets'::regclass AND contype = 'u'
+               AND array_length(conkey, 1) = 2;
+            IF c IS NOT NULL THEN
+                EXECUTE 'ALTER TABLE budgets DROP CONSTRAINT ' || quote_ident(c);
+            END IF;
+        END $$;
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS budgets_cqf_key ON budgets(country, quarter, fiscal_year)",
+        "CREATE INDEX IF NOT EXISTS idx_channels_cqf   ON channels(country, quarter, fiscal_year)",
+        "CREATE INDEX IF NOT EXISTS idx_activities_cqf ON activities(country, quarter, fiscal_year)",
+        "CREATE INDEX IF NOT EXISTS idx_entries_cqf    ON entries(country, quarter, fiscal_year)",
     ]
     try:
         with get_cursor() as cur:
@@ -97,14 +127,14 @@ def get_filtered(tab, **filters):
 
 # ── BUDGETS ───────────────────────────────────────────────────
 
-def upsert_budget(id, country, quarter, total_budget, updated_at):
+def upsert_budget(id, country, quarter, total_budget, updated_at, fiscal_year=DEFAULT_FY):
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO budgets (id, country, quarter, fiscal_year, total_budget, updated_at)
-            VALUES (%s, %s, %s, 'FY26', %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (country, quarter, fiscal_year) DO UPDATE
             SET total_budget = EXCLUDED.total_budget, updated_at = EXCLUDED.updated_at
-        """, (id, country, quarter, total_budget, updated_at))
+        """, (id, country, quarter, fiscal_year, total_budget, updated_at))
 
 def get_budget(country, quarter):
     rows = get_filtered("Budgets", country=country, quarter=quarter)
@@ -112,44 +142,60 @@ def get_budget(country, quarter):
 
 # ── CHANNELS ──────────────────────────────────────────────────
 
-def insert_channel(id, country, quarter, name, budget, sort_order, created_at):
+def insert_channel(id, country, quarter, name, budget, sort_order, created_at, fiscal_year=DEFAULT_FY):
     with get_cursor() as cur:
         cur.execute("""
-            INSERT INTO channels (id, country, quarter, name, budget, sort_order, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (id, country, quarter, name, budget, sort_order, created_at))
+            INSERT INTO channels (id, country, quarter, name, budget, sort_order, created_at, fiscal_year)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (id, country, quarter, name, budget, sort_order, created_at, fiscal_year))
 
-def update_channel(id, country, quarter, name, budget, sort_order, created_at):
+def update_channel(id, country, quarter, name, budget, sort_order, created_at, fiscal_year=None):
     with get_cursor() as cur:
-        cur.execute("""
-            UPDATE channels SET country=%s, quarter=%s, name=%s, budget=%s,
-            sort_order=%s, created_at=%s WHERE id=%s
-        """, (country, quarter, name, budget, sort_order, created_at, id))
+        if fiscal_year is None:
+            cur.execute("""
+                UPDATE channels SET country=%s, quarter=%s, name=%s, budget=%s,
+                sort_order=%s, created_at=%s WHERE id=%s
+            """, (country, quarter, name, budget, sort_order, created_at, id))
+        else:
+            cur.execute("""
+                UPDATE channels SET country=%s, quarter=%s, name=%s, budget=%s,
+                sort_order=%s, created_at=%s, fiscal_year=%s WHERE id=%s
+            """, (country, quarter, name, budget, sort_order, created_at, fiscal_year, id))
 
 def delete_channel(id):
     with get_cursor() as cur:
         cur.execute("DELETE FROM channels WHERE id = %s", (id,))
 
-def count_channels(country, quarter):
+def count_channels(country, quarter, fiscal_year=None):
     with get_cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM channels WHERE country=%s AND quarter=%s", (country, quarter))
+        if fiscal_year is None:
+            cur.execute("SELECT COUNT(*) FROM channels WHERE country=%s AND quarter=%s", (country, quarter))
+        else:
+            cur.execute("SELECT COUNT(*) FROM channels WHERE country=%s AND quarter=%s AND fiscal_year=%s",
+                        (country, quarter, fiscal_year))
         return cur.fetchone()["count"]
 
 # ── ACTIVITIES ────────────────────────────────────────────────
 
-def insert_activity(id, channel_id, country, quarter, name, sort_order, created_at):
+def insert_activity(id, channel_id, country, quarter, name, sort_order, created_at, fiscal_year=DEFAULT_FY):
     with get_cursor() as cur:
         cur.execute("""
-            INSERT INTO activities (id, channel_id, country, quarter, name, sort_order, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (id, channel_id, country, quarter, name, sort_order, created_at))
+            INSERT INTO activities (id, channel_id, country, quarter, name, sort_order, created_at, fiscal_year)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (id, channel_id, country, quarter, name, sort_order, created_at, fiscal_year))
 
-def update_activity(id, channel_id, country, quarter, name, sort_order, created_at):
+def update_activity(id, channel_id, country, quarter, name, sort_order, created_at, fiscal_year=None):
     with get_cursor() as cur:
-        cur.execute("""
-            UPDATE activities SET channel_id=%s, country=%s, quarter=%s, name=%s,
-            sort_order=%s, created_at=%s WHERE id=%s
-        """, (channel_id, country, quarter, name, sort_order, created_at, id))
+        if fiscal_year is None:
+            cur.execute("""
+                UPDATE activities SET channel_id=%s, country=%s, quarter=%s, name=%s,
+                sort_order=%s, created_at=%s WHERE id=%s
+            """, (channel_id, country, quarter, name, sort_order, created_at, id))
+        else:
+            cur.execute("""
+                UPDATE activities SET channel_id=%s, country=%s, quarter=%s, name=%s,
+                sort_order=%s, created_at=%s, fiscal_year=%s WHERE id=%s
+            """, (channel_id, country, quarter, name, sort_order, created_at, fiscal_year, id))
 
 def delete_activity(id):
     with get_cursor() as cur:
@@ -160,12 +206,18 @@ def count_activities_for_channel(channel_id):
         cur.execute("SELECT COUNT(*) FROM activities WHERE channel_id=%s", (channel_id,))
         return cur.fetchone()["count"]
 
-def find_activity(channel_id, country, quarter, name):
+def find_activity(channel_id, country, quarter, name, fiscal_year=None):
     with get_cursor() as cur:
-        cur.execute("""
-            SELECT * FROM activities
-            WHERE channel_id=%s AND country=%s AND quarter=%s AND TRIM(name)=%s
-        """, (channel_id, country, quarter, name.strip()))
+        if fiscal_year is None:
+            cur.execute("""
+                SELECT * FROM activities
+                WHERE channel_id=%s AND country=%s AND quarter=%s AND TRIM(name)=%s
+            """, (channel_id, country, quarter, name.strip()))
+        else:
+            cur.execute("""
+                SELECT * FROM activities
+                WHERE channel_id=%s AND country=%s AND quarter=%s AND TRIM(name)=%s AND fiscal_year=%s
+            """, (channel_id, country, quarter, name.strip(), fiscal_year))
         row = cur.fetchone()
     return dict(row) if row else None
 
@@ -179,15 +231,18 @@ def insert_entry(row_list):
         row_list += [False, 0]      # is_brand_uplift, actual_buc
     elif len(row_list) == 25:
         row_list += [0]             # actual_buc
+    # Derive FY from the month key (row_list[3]); fall back to the entry's
+    # quarter-less default when the month is blank/malformed.
+    fy = fy_for_month(row_list[3]) or DEFAULT_FY
     with get_cursor() as cur:
         cur.execute("""
             INSERT INTO entries (id, country, quarter, month, channel_id, channel_name,
                 activity_id, activity_name, bu, finance_cat, marketing_cat, description,
                 planned, confirmed, actual, jira, vendor, notes, approved,
                 invoice_names, invoice_data, entered_by, created_at, updated_at,
-                is_brand_uplift, actual_buc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, row_list)
+                is_brand_uplift, actual_buc, fiscal_year)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, row_list + [fy])
 
 def update_entry_full(id, row_list):
     """Update all columns of an entry (row_list excludes id).
@@ -197,6 +252,9 @@ def update_entry_full(id, row_list):
         row_list += [False, 0]
     elif len(row_list) == 24:
         row_list += [0]
+    # row_list excludes id, so month is index 2. Keep fiscal_year in sync with
+    # the (possibly edited) month so moving an entry across FYs re-tags it.
+    fy = fy_for_month(row_list[2]) or DEFAULT_FY
     with get_cursor() as cur:
         cur.execute("""
             UPDATE entries SET country=%s, quarter=%s, month=%s, channel_id=%s,
@@ -205,9 +263,9 @@ def update_entry_full(id, row_list):
                 planned=%s, confirmed=%s, actual=%s, jira=%s, vendor=%s, notes=%s,
                 approved=%s, invoice_names=%s, invoice_data=%s,
                 entered_by=%s, created_at=%s, updated_at=%s,
-                is_brand_uplift=%s, actual_buc=%s
+                is_brand_uplift=%s, actual_buc=%s, fiscal_year=%s
             WHERE id=%s
-        """, row_list + [id])
+        """, row_list + [fy, id])
 
 def update_entry_cell(entry_id, column_name, value):
     """Update a single column of an entry (equivalent to ws.update_cell)."""
@@ -345,11 +403,17 @@ def delete_category(id):
     with get_cursor() as cur:
         cur.execute("DELETE FROM categories WHERE id = %s", (id,))
 
-def find_channel(country, quarter, name):
+def find_channel(country, quarter, name, fiscal_year=None):
     with get_cursor() as cur:
-        cur.execute("""
-            SELECT * FROM channels
-            WHERE country=%s AND quarter=%s AND TRIM(name)=%s
-        """, (country, quarter, name.strip()))
+        if fiscal_year is None:
+            cur.execute("""
+                SELECT * FROM channels
+                WHERE country=%s AND quarter=%s AND TRIM(name)=%s
+            """, (country, quarter, name.strip()))
+        else:
+            cur.execute("""
+                SELECT * FROM channels
+                WHERE country=%s AND quarter=%s AND TRIM(name)=%s AND fiscal_year=%s
+            """, (country, quarter, name.strip(), fiscal_year))
         row = cur.fetchone()
     return dict(row) if row else None

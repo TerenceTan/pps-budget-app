@@ -34,6 +34,8 @@ input,select,textarea,button{font-family:'Sora',sans-serif}
 .av{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;flex-shrink:0}
 .av.adm{background:var(--go)}
 .btn-logout{background:transparent;color:var(--t2);border:1px solid var(--b);padding:5px 10px;border-radius:var(--r);font-size:12px;cursor:pointer}.btn-logout:hover{background:var(--s2)}
+.fy-picker{display:flex;align-items:center;margin-right:10px}
+.fy-picker select{background:var(--s2);color:var(--t);border:1px solid var(--b);border-radius:var(--r);font-size:12px;font-weight:600;padding:5px 8px;cursor:pointer}
 #page{padding:18px 20px;max-width:1200px;margin:0 auto}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 15px;border-radius:var(--r);font-family:'Sora',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .14s;white-space:nowrap;line-height:1;text-decoration:none}
 .btn:active{transform:scale(.97)}.btn:disabled{opacity:.45;cursor:not-allowed}
@@ -171,6 +173,10 @@ tfoot td{background:var(--s2);font-weight:600;font-size:12px}
     <nav id="nav" style="display:flex;align-items:center;gap:4px;margin-left:12px;flex-wrap:wrap"></nav>
   </div>
   <div class="tb-r">
+    <label class="fy-picker" title="Fiscal year — Pepperstone FY runs Jul→Jun">
+      <span style="font-size:10px;opacity:.7;text-transform:uppercase;margin-right:4px">FY</span>
+      <select id="fySelect" onchange="setFY(this.value)"></select>
+    </label>
     <div class="chip {{ 'admin' if is_admin else '' }}">
       <div class="av {{ 'adm' if is_admin else '' }}">{{ user[:2] }}</div>
       <span>{{ user }}</span>
@@ -227,13 +233,34 @@ const IS_ADMIN= {{ is_admin|tojson }};
 const IS_EDITOR= {{ is_editor|tojson }};
 const ROLE    = {{ role|tojson }};
 const MARKETS = {{ markets|tojson }};
-const QS      = ["Q1","Q2","Q3","Q4"];
-const MONTHS  = [
-  {v:"2025-07",l:"Jul 2025",q:"Q1"},{v:"2025-08",l:"Aug 2025",q:"Q1"},{v:"2025-09",l:"Sep 2025",q:"Q1"},
-  {v:"2025-10",l:"Oct 2025",q:"Q2"},{v:"2025-11",l:"Nov 2025",q:"Q2"},{v:"2025-12",l:"Dec 2025",q:"Q2"},
-  {v:"2026-01",l:"Jan 2026",q:"Q3"},{v:"2026-02",l:"Feb 2026",q:"Q3"},{v:"2026-03",l:"Mar 2026",q:"Q3"},
-  {v:"2026-04",l:"Apr 2026",q:"Q4"},{v:"2026-05",l:"May 2026",q:"Q4"},{v:"2026-06",l:"Jun 2026",q:"Q4"},
-];
+const QS       = ["Q1","Q2","Q3","Q4"];
+const ACTIVE_FYS = {{ active_fys|tojson }};
+let   FY       = {{ current_fy|tojson }};
+// Pepperstone FY runs Jul→Jun; 'FY27' starts Jul 2026. Build the 12-month
+// option list for whichever FY is active so month pickers follow the FY.
+const _MABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function monthsForFY(fy){
+  const endYear = 2000 + parseInt(String(fy).replace(/FY/i,''),10);
+  const sy = endYear - 1;               // calendar year the FY starts in (its July)
+  const out = [];
+  for(let i=0;i<12;i++){
+    const m = i<6 ? 7+i : i-5;           // 7..12 then 1..6
+    const y = i<6 ? sy : sy+1;
+    const q = "Q"+(Math.floor(((m+5)%12)/3)+1);  // Jul-Sep=Q1 ... Apr-Jun=Q4
+    out.push({v:`${y}-${String(m).padStart(2,'0')}`, l:`${_MABBR[m-1]} ${y}`, q});
+  }
+  return out;
+}
+let MONTHS = monthsForFY(FY);
+async function setFY(fy){
+  if(fy===FY) return;
+  try{
+    await api('/api/fy',{method:'POST',body:JSON.stringify({fiscal_year:fy})});
+    FY = fy; MONTHS = monthsForFY(FY);
+    toast('Switched to '+fy,'ok');
+    render();
+  }catch(e){ toast('Could not switch fiscal year','err'); }
+}
 
 let BU_LIST = [];
 let FIN_CATS = [];
@@ -2416,7 +2443,13 @@ async function bulkDeleteCommit(){
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeEM();closeCM();closeAM();closeDM();}});
 
+function populateFYSelect(){
+  const sel = g('fySelect'); if(!sel) return;
+  sel.innerHTML = ACTIVE_FYS.map(fy=>`<option value="${fy}" ${fy===FY?'selected':''}>${fy}</option>`).join('');
+}
+
 async function boot(){
+  populateFYSelect();
   await loadCategories();
   initNav();
   renderDash();

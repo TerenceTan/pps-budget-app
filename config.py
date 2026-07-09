@@ -289,21 +289,70 @@ def normalise_country(raw):
     return s
 
 
-# FY26 month -> quarter
+# ═══════════════════════════════════════════════════════════════════
+#  FISCAL YEAR MODEL
+#  Pepperstone FY runs Jul → Jun. "FY26" == Jul 2025 → Jun 2026 (labelled
+#  by the calendar year it ENDS in). Quarters within a FY:
+#    Q1 = Jul–Sep, Q2 = Oct–Dec, Q3 = Jan–Mar, Q4 = Apr–Jun.
+#
+#  Everything below is derived from ACTIVE_FYS so that rolling into a new
+#  fiscal year is a one-line change (append the new FY label) rather than a
+#  hand-edited month dictionary. CURRENT_FY is the default a session opens in.
+# ═══════════════════════════════════════════════════════════════════
+
+# Fiscal years the app accepts data for. Add the next FY here when it opens.
+ACTIVE_FYS = [fy.strip() for fy in os.environ.get("ACTIVE_FYS", "FY26,FY27").split(",") if fy.strip()]
+# The FY a fresh session defaults to (must be one of ACTIVE_FYS).
+CURRENT_FY = os.environ.get("CURRENT_FY", ACTIVE_FYS[-1])
+# Legacy rows created before the fiscal_year column existed are tagged this.
+DEFAULT_FY = "FY26"
+
+# month number -> quarter (FY-agnostic: same for every fiscal year)
 MONTH_TO_QUARTER = {7:'Q1',8:'Q1',9:'Q1',10:'Q2',11:'Q2',12:'Q2',1:'Q3',2:'Q3',3:'Q3',4:'Q4',5:'Q4',6:'Q4'}
-MONTH_KEY_MAP = {
-    (2025,7):'2025-07',(2025,8):'2025-08',(2025,9):'2025-09',
-    (2025,10):'2025-10',(2025,11):'2025-11',(2025,12):'2025-12',
-    (2026,1):'2026-01',(2026,2):'2026-02',(2026,3):'2026-03',
-    (2026,4):'2026-04',(2026,5):'2026-05',(2026,6):'2026-06',
-}
-MONTH_SHORT = {
-    "2025-07":"Jul 25","2025-08":"Aug 25","2025-09":"Sep 25",
-    "2025-10":"Oct 25","2025-11":"Nov 25","2025-12":"Dec 25",
-    "2026-01":"Jan 26","2026-02":"Feb 26","2026-03":"Mar 26",
-    "2026-04":"Apr 26","2026-05":"May 26","2026-06":"Jun 26",
-}
+_MONTH_ABBR = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
+
+
+def fy_start_year(fy_label):
+    """'FY27' -> 2026 (the calendar year the fiscal year STARTS in, i.e. its July)."""
+    end_year = 2000 + int(str(fy_label).upper().replace("FY", "").strip())
+    return end_year - 1
+
+
+def fy_months(fy_label):
+    """Ordered list of the 12 'YYYY-MM' month keys in a fiscal year (Jul→Jun)."""
+    sy = fy_start_year(fy_label)
+    return [f"{sy}-{m:02d}" for m in range(7, 13)] + [f"{sy+1}-{m:02d}" for m in range(1, 7)]
+
+
+def fy_for_month(month_key):
+    """'2025-07' -> 'FY26', '2026-07' -> 'FY27'. '' if malformed.
+    A month in Jul–Dec belongs to the FY ending the following calendar year;
+    Jan–Jun belongs to the FY ending that same calendar year."""
+    try:
+        y, m = (int(x) for x in str(month_key).strip().split('-')[:2])
+        end_year = y + 1 if m >= 7 else y
+        return f"FY{end_year % 100:02d}"
+    except Exception:
+        return ''
+
+
+# Derived lookups, built for every active FY so validation/labels cover them all.
+MONTH_KEY_MAP = {}   # (year, month) -> 'YYYY-MM'
+MONTH_SHORT = {}     # 'YYYY-MM' -> 'Jul 25'
+for _fy in ACTIVE_FYS:
+    for _mk in fy_months(_fy):
+        _y, _m = (int(x) for x in _mk.split('-'))
+        MONTH_KEY_MAP[(_y, _m)] = _mk
+        MONTH_SHORT[_mk] = f"{_MONTH_ABBR[_m]} {_y % 100:02d}"
 VALID_MONTH_KEYS = set(MONTH_SHORT.keys())
+
+
+def normalise_fy(fy, default=None):
+    """Coerce a user/session-supplied FY to a valid ACTIVE_FYS label, else default/CURRENT_FY."""
+    s = str(fy or '').strip().upper()
+    if s and not s.startswith('FY'):
+        s = 'FY' + s
+    return s if s in ACTIVE_FYS else (default or CURRENT_FY)
 
 
 def month_to_quarter(month_key):

@@ -178,21 +178,28 @@ def _norm(s):
     return str(s or "").strip().lower()
 
 
-def _find_channel(existing_channels, country, quarter, channel_name):
+def _fy_of(r):  # legacy in-memory rows have no fiscal_year -> treat as FY26
+    return str(r.get("fiscal_year") or DEFAULT_FY)
+
+
+def _find_channel(existing_channels, country, quarter, channel_name, fiscal_year=None):
     """Return the channel dict for an EXISTING channel, or None.
     Sync never creates channels — this is a pure lookup.
     Match is case-insensitive + trim-both-sides to survive minor name drift
-    (e.g. trailing whitespace, casing changes after a rename)."""
+    (e.g. trailing whitespace, casing changes after a rename).
+    When fiscal_year is given, the channel must also belong to that FY so
+    an FY26 channel is not reused for an FY27 spend row."""
     target = _norm(channel_name)
     for c in existing_channels:
         if (str(c.get("country","")) == country
             and str(c.get("quarter","")) == quarter
-            and _norm(c.get("name","")) == target):
+            and _norm(c.get("name","")) == target
+            and (fiscal_year is None or _fy_of(c) == fiscal_year)):
             return c
     return None
 
 
-def _ensure_activity(ws_activities, existing_activities, channel_id, country, quarter, activity_name, now):
+def _ensure_activity(ws_activities, existing_activities, channel_id, country, quarter, activity_name, now, fiscal_year=DEFAULT_FY):
     """Find-or-create an activity under a channel. Idempotent.
     Returns (activity_id, created_flag).
     In PostgreSQL mode, ws_activities is ignored."""
@@ -201,17 +208,18 @@ def _ensure_activity(ws_activities, existing_activities, channel_id, country, qu
         if (str(a.get("channel_id","")) == channel_id
             and str(a.get("country","")) == country
             and str(a.get("quarter","")) == quarter
+            and _fy_of(a) == fiscal_year
             and _norm(a.get("name","")) == target):
             return str(a["id"]), False
     aid = "act_" + str(uuid.uuid4())[:8]
     so = len([a for a in existing_activities if str(a.get("channel_id","")) == channel_id])
     if USE_POSTGRES:
-        pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now)
+        pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now, fiscal_year=fiscal_year)
     else:
         ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
     existing_activities.append({
         "id": aid, "channel_id": channel_id, "country": country,
-        "quarter": quarter, "name": activity_name, "sort_order": so
+        "quarter": quarter, "name": activity_name, "sort_order": so, "fiscal_year": fiscal_year
     })
     return aid, True
 
@@ -251,14 +259,15 @@ def sync():
         mapped_channel = mapping["channel_name"]
         mapped_activity = mapping["activity_name"]
 
-        ch = _find_channel(existing_channels, country, quarter, mapped_channel)
+        row_fy = fy_for_month(month) or DEFAULT_FY
+        ch = _find_channel(existing_channels, country, quarter, mapped_channel, fiscal_year=row_fy)
         if not ch:
             skipped += 1
-            skip_reasons.append(f"{country}/{quarter}: channel '{mapped_channel}' not configured — create it in Config")
+            skip_reasons.append(f"{country}/{quarter} ({row_fy}): channel '{mapped_channel}' not configured — create it in Config")
             continue
         channel_id = str(ch["id"])
         activity_id, act_created = _ensure_activity(
-            ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now)
+            ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now, fiscal_year=row_fy)
         if act_created:
             activities_created += 1
 
@@ -421,12 +430,14 @@ def auto_sync():
             mapped_marketing_cat = r["mapped_marketing_cat"]
             sources = r.get("_sources") or [channel_group]
 
+            row_fy = fy_for_month(month_key) or DEFAULT_FY
+
             # HARD RULE: never create channels
-            ch = _find_channel(existing_channels, country, quarter, mapped_channel)
+            ch = _find_channel(existing_channels, country, quarter, mapped_channel, fiscal_year=row_fy)
             if not ch:
                 if spend > 0:
                     skipped += 1
-                    reason = f"{country}/{quarter}: '{mapped_channel}' channel not set up"
+                    reason = f"{country}/{quarter} ({row_fy}): '{mapped_channel}' channel not set up"
                     if reason not in skip_reasons:
                         skip_reasons.append(reason)
                 continue
@@ -440,6 +451,7 @@ def auto_sync():
                 if (str(a.get("channel_id","")) == channel_id
                     and str(a.get("country","")) == country
                     and str(a.get("quarter","")) == quarter
+                    and _fy_of(a) == row_fy
                     and _norm(a.get("name","")) == target_act):
                     activity_id = str(a["id"])
                     break
@@ -448,7 +460,7 @@ def auto_sync():
                     skipped += 1
                     continue
                 activity_id, act_created = _ensure_activity(
-                    ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now)
+                    ws_activities, existing_activities, channel_id, country, quarter, mapped_activity, now, fiscal_year=row_fy)
                 if act_created:
                     activities_created += 1
 

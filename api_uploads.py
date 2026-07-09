@@ -181,7 +181,7 @@ def upload_planned():
         if co not in MARKETS:
             rejected.append({"row":idx,"reason":f"unknown country '{co_raw}' (normalised to '{co}')","raw":dict(d)}); continue
         if not mo_std or mo_std not in VALID_MONTH_KEYS:
-            rejected.append({"row":idx,"reason":f"invalid month '{mo_raw}' (expected YYYY-MM in FY26 range)","raw":dict(d)}); continue
+            rejected.append({"row":idx,"reason":f"invalid month '{mo_raw}' (expected YYYY-MM within an active FY: {', '.join(ACTIVE_FYS)})","raw":dict(d)}); continue
         if not cg:
             rejected.append({"row":idx,"reason":"missing channel_group","raw":dict(d)}); continue
         if cg not in PM_CHANNEL_MAP:
@@ -229,56 +229,61 @@ def upload_planned():
     overwrote = 0
     created = 0
 
-    def ensure_budget(country, quarter):
-        if any(str(b.get("country",""))==country and str(b.get("quarter",""))==quarter for b in existing_budgets):
+    def _fy_of(r):  # legacy in-memory rows have no fiscal_year -> treat as FY26
+        return str(r.get("fiscal_year") or DEFAULT_FY)
+
+    def ensure_budget(country, quarter, fy):
+        if any(str(b.get("country",""))==country and str(b.get("quarter",""))==quarter and _fy_of(b)==fy for b in existing_budgets):
             return
         bid = str(uuid.uuid4())[:8]
         if USE_POSTGRES:
-            pgdb.upsert_budget(bid, country, quarter, 0, now)
+            pgdb.upsert_budget(bid, country, quarter, 0, now, fiscal_year=fy)
         else:
             ws_budgets.append_row([bid, country, quarter, 0, now])
-        existing_budgets.append({"country":country, "quarter":quarter, "total_budget":0})
+        existing_budgets.append({"country":country, "quarter":quarter, "total_budget":0, "fiscal_year":fy})
 
     def _norm(s):
         return str(s or "").strip().lower()
 
-    def ensure_channel(country, quarter, channel_name):
+    def ensure_channel(country, quarter, channel_name, fy):
         nonlocal channels_created
         target = _norm(channel_name)
         for c in existing_channels:
             if (str(c.get("country","")) == country
                 and str(c.get("quarter","")) == quarter
+                and _fy_of(c) == fy
                 and _norm(c.get("name","")) == target):
                 return str(c["id"])
         cid = "ch_" + str(uuid.uuid4())[:8]
-        so = len([c for c in existing_channels if str(c.get("country",""))==country and str(c.get("quarter",""))==quarter])
+        so = len([c for c in existing_channels if str(c.get("country",""))==country and str(c.get("quarter",""))==quarter and _fy_of(c)==fy])
         if USE_POSTGRES:
-            pgdb.insert_channel(cid, country, quarter, channel_name, 0, so, now)
+            pgdb.insert_channel(cid, country, quarter, channel_name, 0, so, now, fiscal_year=fy)
         else:
             ws_channels.append_row([cid, country, quarter, channel_name, 0, so, now])
         existing_channels.append({"id":cid, "country":country, "quarter":quarter,
-                                  "name":channel_name, "budget":0, "sort_order":so})
+                                  "name":channel_name, "budget":0, "sort_order":so, "fiscal_year":fy})
         channels_created += 1
-        ensure_budget(country, quarter)  # also seed a $0 budget row so market appears in lists
+        ensure_budget(country, quarter, fy)  # also seed a $0 budget row so market appears in lists
         return cid
 
-    def ensure_activity(channel_id, country, quarter, activity_name):
+    def ensure_activity(channel_id, country, quarter, activity_name, fy):
         nonlocal activities_created
         target = _norm(activity_name)
         for a in existing_activities:
             if (str(a.get("channel_id","")) == channel_id
                 and str(a.get("country","")) == country
                 and str(a.get("quarter","")) == quarter
+                and _fy_of(a) == fy
                 and _norm(a.get("name","")) == target):
                 return str(a["id"])
         aid = "act_" + str(uuid.uuid4())[:8]
         so = len([a for a in existing_activities if str(a.get("channel_id",""))==channel_id])
         if USE_POSTGRES:
-            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now)
+            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now, fiscal_year=fy)
         else:
             ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
         existing_activities.append({"id":aid, "channel_id":channel_id, "country":country,
-                                    "quarter":quarter, "name":activity_name, "sort_order":so})
+                                    "quarter":quarter, "name":activity_name, "sort_order":so, "fiscal_year":fy})
         activities_created += 1
         return aid
 
@@ -294,8 +299,9 @@ def upload_planned():
         mapping = PM_CHANNEL_MAP[r["channel_group"]]
         mapped_channel = mapping["channel_name"]
         mapped_activity = mapping["activity_name"]
-        channel_id = ensure_channel(r["country"], r["quarter"], mapped_channel)
-        activity_id = ensure_activity(channel_id, r["country"], r["quarter"], mapped_activity)
+        row_fy = fy_for_month(r["month"]) or DEFAULT_FY
+        channel_id = ensure_channel(r["country"], r["quarter"], mapped_channel, row_fy)
+        activity_id = ensure_activity(channel_id, r["country"], r["quarter"], mapped_activity, row_fy)
         planned = round(r["planned"], 2)
 
         lookup_key = f"{r['country']}|{channel_id}|{activity_id}|{r['month']}"
@@ -500,17 +506,21 @@ def upload_entries():
     now = datetime.utcnow().isoformat()
     username = session.get("username", "line_upload")
 
-    # Channel lookup — line-item upload REQUIRES channel to already exist for that market+quarter
-    def find_channel(country, quarter, channel_name):
+    def _fy_of(r):  # legacy in-memory rows have no fiscal_year -> treat as FY26
+        return str(r.get("fiscal_year") or DEFAULT_FY)
+
+    # Channel lookup — line-item upload REQUIRES channel to already exist for that market+quarter+FY
+    def find_channel(country, quarter, channel_name, fy):
         for c in existing_channels:
             if (str(c.get("country","")) == country
                 and str(c.get("quarter","")) == quarter
+                and _fy_of(c) == fy
                 and str(c.get("name","")).strip().lower() == channel_name.strip().lower()):
                 return str(c["id"]), str(c.get("name",""))
         return None, None
 
     activities_created = 0
-    def ensure_activity(channel_id, country, quarter, activity_name):
+    def ensure_activity(channel_id, country, quarter, activity_name, fy):
         nonlocal activities_created
         if not activity_name:
             return ""
@@ -518,16 +528,17 @@ def upload_entries():
             if (str(a.get("channel_id","")) == channel_id
                 and str(a.get("country","")) == country
                 and str(a.get("quarter","")) == quarter
+                and _fy_of(a) == fy
                 and str(a.get("name","")).strip().lower() == activity_name.strip().lower()):
                 return str(a["id"])
         aid = "act_" + str(uuid.uuid4())[:8]
         so = len([a for a in existing_activities if str(a.get("channel_id",""))==channel_id])
         if USE_POSTGRES:
-            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now)
+            pgdb.insert_activity(aid, channel_id, country, quarter, activity_name, so, now, fiscal_year=fy)
         else:
             ws_activities.append_row([aid, channel_id, country, quarter, activity_name, so, now])
         existing_activities.append({"id":aid,"channel_id":channel_id,"country":country,
-                                    "quarter":quarter,"name":activity_name,"sort_order":so})
+                                    "quarter":quarter,"name":activity_name,"sort_order":so,"fiscal_year":fy})
         activities_created += 1
         return aid
 
@@ -547,15 +558,16 @@ def upload_entries():
     approved_overwrites = []
 
     for r in allowed:
-        ch_id, ch_canonical = find_channel(r["country"], r["quarter"], r["channel_name"])
+        row_fy = fy_for_month(r["month"]) or DEFAULT_FY
+        ch_id, ch_canonical = find_channel(r["country"], r["quarter"], r["channel_name"], row_fy)
         if not ch_id:
             rejected.append({
                 "row": r["_src_row"],
-                "reason": f"channel '{r['channel_name']}' does not exist for {r['country']}/{r['quarter']} — admin must create it first",
+                "reason": f"channel '{r['channel_name']}' does not exist for {r['country']}/{r['quarter']} ({row_fy}) — admin must create it first",
                 "raw": {"country":r["country"],"quarter":r["quarter"],"channel":r["channel_name"]}
             })
             continue
-        act_id = ensure_activity(ch_id, r["country"], r["quarter"], r["activity_name"])
+        act_id = ensure_activity(ch_id, r["country"], r["quarter"], r["activity_name"], row_fy)
         key = dedup_key(r["country"], r["month"], ch_id, act_id, r["vendor"], r["description"])
         match = dedup_idx.get(key)
 

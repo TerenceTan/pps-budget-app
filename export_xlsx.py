@@ -79,7 +79,17 @@ def _group_key(entry):
     return ch or entry.get("finance_cat") or "Other"
 
 
-def build_finance_export(output_path, entries, channels, budgets, current_month_key="2026-02"):
+def build_finance_export(output_path, entries, channels, budgets, current_month_key=None, fiscal_year=None):
+    import calendar as _cal
+    from config import fy_months as _fy_months, normalise_fy as _norm_fy, DEFAULT_FY as _DEF_FY
+    # Build the 12-month grid for the requested fiscal year (Jul→Jun) so the
+    # export layout follows the data's FY instead of a hardcoded FY26.
+    fy_label = _norm_fy(fiscal_year, _DEF_FY) if fiscal_year else _DEF_FY
+    MONTH_KEYS = _fy_months(fy_label)
+    MONTH_DATES = [datetime(int(k[:4]), int(k[5:7]), _cal.monthrange(int(k[:4]), int(k[5:7]))[1]) for k in MONTH_KEYS]
+    if current_month_key not in MONTH_KEYS:
+        current_month_key = MONTH_KEYS[7]   # default to month 8 (Feb-equiv), matching prior behaviour
+
     wb=openpyxl.Workbook(); ws=wb.active; ws.title="APAC"
     ws.sheet_view.showGridLines=False
 
@@ -93,13 +103,13 @@ def build_finance_export(output_path, entries, channels, budgets, current_month_
 
     for r,(txt,bg,fc,sz) in enumerate([
         ("Marketing Expenses Detail— APAC",C_DARK_GREEN,C_WHITE,12),
-        ("Marketing FY26 Tracker",None,"000000",10),
+        (f"Marketing {fy_label} Tracker",None,"000000",10),
         ("Pepperstone Group Limited",None,"000000",10)],1):
         ws.merge_cells(f'A{r}:{gl(TOTAL_COLS)}{r}')
         _s(ws.cell(r,1,txt),bg=bg,bold=True,fc=fc,size=sz)
 
     ws['C4']='AUD $000'; _s(ws['C4'],bg=C_DARK_GREEN,bold=True,fc=C_WHITE,align='center')
-    ws['D4']='FY26'
+    ws['D4']=fy_label
     cm_idx=MONTH_KEYS.index(current_month_key) if current_month_key in MONTH_KEYS else 7
     ws['C5']='Current mth'; ws['D5']=MONTH_DATES[cm_idx]; ws['D5'].number_format='MMM-YY'
 
@@ -114,7 +124,7 @@ def build_finance_export(output_path, entries, channels, budgets, current_month_
             _s(ws.cell(7,base+i,lbl),bg=bg,bold=True,fc=C_WHITE,size=8,align='center')
 
     for col,lbl in [(1,"AP- Main Account"),(3,"Category"),(4,"Country"),(5,"Vendor"),
-                     (6,"Note"),(7,"FY26 (ACT/BUDGET)"),(8,"Budget"),(9,"Var Check"),
+                     (6,"Note"),(7,f"{fy_label} (ACT/BUDGET)"),(8,"Budget"),(9,"Var Check"),
                      (11,"YTD"),(12,"YTD"),(13,"YTD")]:
         c=ws.cell(8,col,lbl); _s(c,bg=C_DARK_GREY,bold=True,fc=C_WHITE,size=9,align='center',wrap=True); c.border=_border()
     for col in [COL_CM_BUD,COL_CM_ACT]:
